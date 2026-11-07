@@ -15,17 +15,16 @@ craft-archive/
 └── third-party-apps/solidcraft/
 ```
 
-Each app folder contains `source/` (shallow Git clone), the selected release files, optional checksum/signature files, and `provenance.toml` with the exact source commit, release metadata, asset URLs, and SHA-256 digests.
+Each app folder contains `source/` (shallow Git clone), selected release files, optional checksum/signature files, and `provenance.toml` with the source commit, release metadata, asset URLs, and SHA-256 digests.
 
 ## Requirements
 
 - `mise`
-- Git and Bash; on Windows, run from Git Bash (mise itself may be installed on Windows)
-- `curl`
-- A GitHub API token is optional but recommended for reliable API rate limits: set `GH_TOKEN`.
-- `gpg` is only required for optional signature verification.
+- Git and Bash; on Windows, run from Git Bash
+- `curl`, `gpg`, and a reachable HKPS keyserver for the default signature verification
+- A GitHub API token is optional but recommended for API rate limits: set `GH_TOKEN`
 
-`mise install` installs the pinned `jq` parser. Other commands are provided by the host shell. `mise` task `usage` flags parse task arguments.
+`mise install` installs pinned `jq`. `mise run keys:fetch` retrieves the signing key into an isolated temporary GPG home, checks the pinned full fingerprint, and writes the verified public key to `keys/storytold-release-key.asc`.
 
 ## Run
 
@@ -34,11 +33,20 @@ mise install
 mise run archive
 ```
 
-Defaults are unchanged: clone depth `20`; download the macOS universal DMG, Windows x64 portable package, and Linux x86_64 `.deb` for each latest stable GitHub release. All additional package formats and architectures are opt-in. The archive is saved to `craft-archive/` unless `CRAFT_ARCHIVE_DIR` is set.
+Defaults: clone depth `20`; macOS universal DMG, Windows x64 package, and Linux x86_64 `.deb`; signature verification is **enabled**. Before archiving, the task runs `scripts/fetch-release-key.sh`, which fetches key ID `EC2AAF6D2213BF17` from `hkps://keyserver.ubuntu.com` and requires full fingerprint `9F494AB282B2F20C80D16128EC2AAF6D2213BF17`. The archive is saved to `craft-archive/` unless `CRAFT_ARCHIVE_DIR` is set.
+
+```sh
+# More Linux formats/architectures are opt-in.
+mise run archive --linux-x86_64-appimage --linux-x86_64-rpm --linux-aarch64-deb
+
+# Disable verification for a repository/release that has no signatures, or to run offline.
+mise run archive --no-verify-signatures
+
+# Fetch/check key separately.
+mise run keys:fetch
+```
 
 ### Linux package-format and architecture options
-
-Linux formats can be selected independently by architecture. Each option defaults to `false` except the existing `--linux-x86_64-deb`, which remains `true`:
 
 | Architecture | Available format flags |
 |---|---|
@@ -46,52 +54,16 @@ Linux formats can be selected independently by architecture. Each option default
 | aarch64 / ARM64 | `--linux-aarch64-deb`, `--linux-aarch64-appimage`, `--linux-aarch64-flatpak`, `--linux-aarch64-rpm`, `--linux-aarch64-tar-gz`, `--linux-aarch64-pkg-tar-zst` |
 | riscv64 | `--linux-riscv64-deb`, `--linux-riscv64-rpm`, `--linux-riscv64-tar-gz` |
 
-Select multiple formats and architectures in one run. For example:
+Windows x64 remains enabled by default; `--windows-arm64` and `--windows-x86` are opt-in. The macOS DMG is universal. ArtCraft Studio may publish a setup executable instead of a Windows portable ZIP; the fallback is recorded as non-portable. Requested assets missing from a release are warned about and skipped.
 
-```sh
-mise run archive --linux-x86_64-appimage --linux-x86_64-rpm --linux-aarch64-deb
-```
+## Signature verification and trust
 
-Use the negated form to switch off an enabled default, for example `--no-linux-x86_64-deb`. Release assets are checked per repository; an unavailable requested format is warned about and skipped.
+The key-fetch script does **not** trust a key merely because it came from a keyserver: it retrieves by short ID only as a lookup, then requires the exact pinned full fingerprint before exporting the key. The fingerprint must be confirmed from an independent official source before relying on this pin; do not change it based solely on a keyserver result.
 
-### Other architecture options
+The archive task always computes local SHA-256 hashes and compares downloaded files with `SHA256SUMS.txt` when present. With verification enabled, it verifies available detached asset signatures and the signed checksum list using the pinned key. Some project releases may lack signatures; those cases are warned about rather than represented as verified. SHA-256 matching alone is integrity checking, not proof of publisher origin.
 
-Windows x64 remains enabled by default. Windows ARM64 and x86 can be added explicitly:
-
-```sh
-mise run archive --windows-arm64 --windows-x86
-```
-
-The macOS DMG is published as universal by these projects; there are no separate Intel/Apple-Silicon asset flags. ArtCraft Studio currently has no Windows portable ZIP in its latest release; the task falls back to its x64 setup executable and records `portable = false`.
-
-Change clone depth without changing asset defaults:
-
-```sh
-mise run archive --depth 5
-```
-
-Choose a custom destination and authenticate GitHub API requests:
-
-```sh
-CRAFT_ARCHIVE_DIR=/mnt/backup/craft GH_TOKEN="$GH_TOKEN" mise run archive
-```
-
-## Signature verification
-
-Release asset hashes are always computed locally. When the release publishes `SHA256SUMS.txt`, every downloaded installer is checked against it. This detects transfer errors but does **not** by itself authenticate the publisher, since the checksum file is hosted alongside the assets.
-
-GPG verification is opt-in. It requires a release public key and fingerprint obtained and verified independently (do not trust a key merely because it was downloaded from the same GitHub release):
-
-```sh
-CRAFT_GPG_KEY_FILE=/secure/path/release-key.asc \
-CRAFT_GPG_FINGERPRINT=0123456789ABCDEF0123456789ABCDEF01234567 \
-mise run archive --verify-signatures
-```
-
-The fingerprint must match the imported key. If a signed `SHA256SUMS.txt.asc` exists, it is verified before relying on its hashes. Individual asset `.asc` signatures are also verified when provided. If a release does not provide a signed checksum list or signatures, the task warns; signature verification cannot be claimed for that release. A valid checksum without a trusted signature is integrity checking, not proof of origin.
+For key verification alone, use `mise run keys:fetch`. To change where the key is written, set `CRAFT_GPG_KEY_OUTPUT`. To disable signature checks for a run, pass `--no-verify-signatures`.
 
 ## Reproducibility notes
 
-A run selects each repository's latest stable GitHub release and uses that release's tag as the source ref. If no stable release exists, it falls back to the first GitHub tag; if no tags exist, it uses the repository's default branch. `provenance.toml` records the resulting commit SHA, exact tag/branch, requested depth, release ID/URL/date, and installer checksums. Thus future runs may select newer versions, while each completed archive records precisely what it captured.
-
-GitHub API requests are made at runtime, so the set of latest releases is intentionally not pinned. Save the resulting provenance files alongside the downloads to preserve a record of each run.
+A run selects each repository's latest stable GitHub release and uses that release's tag as the source ref. If no stable release exists, it falls back to the first GitHub tag; if no tags exist, it uses the repository's default branch. Each `provenance.toml` records the selected commit, exact tag/branch, requested clone depth, release ID/URL/date, and installer checksums. Future runs may select newer versions; provenance captures what each run archived.
