@@ -163,6 +163,8 @@ mise run archive \
 mise run archive --windows-arm64 --windows-x86
 ```
 
+Windows downloads are portable `.zip` packages only. If a release has no portable package for a selected architecture (currently ArtCraft Studio, which ships only a setup `.exe` and `.msi`), that download is skipped with a warning; installers are not used as a fallback.
+
 ## Key fetch / verification
 
 The release verification is pinned to the ArtCraft Linux repository signing public key. The current pinned fingerprint is:
