@@ -7,10 +7,12 @@ DIST_DIR="${CRAFT_WIKI_DIST_DIR:-$ROOT/dist}"
 VIEWER_SRC="${CRAFT_WIKI_VIEWER_SRC:-$(pwd)/internal/viewer}"
 HOST="${CRAFT_WIKI_HOST:-127.0.0.1}"
 PORT="${CRAFT_WIKI_PORT:-42420}"
+TARGETS="${CRAFT_WIKI_TARGETS:-}"
+ALL_TARGETS=(windows-amd64 windows-arm64 darwin-amd64 darwin-arm64 linux-amd64 linux-arm64)
 
 usage() {
   cat >&2 <<'EOF'
-Usage: archive-wiki.sh <clone|build|launcher|archive|launch>
+Usage: archive-wiki.sh <clone|build|launcher|archive|launch> [--targets LIST]
 
 Actions:
   clone     Clone the Craft Wiki source repository.
@@ -19,6 +21,11 @@ Actions:
   archive   Build and package the wiki archive with provenance.
   launch    Print the exact host-specific launch command.
 
+Options:
+  --targets LIST  Comma-separated viewer targets for launcher/archive (default: all):
+                  windows-amd64, windows-arm64, darwin-amd64, darwin-arm64,
+                  linux-amd64, linux-arm64
+
 Environment:
   CRAFT_WIKI_ARCHIVE_ROOT     Destination root for the wiki archive (default: ./craft-archive/documentation/craft-wiki)
   CRAFT_WIKI_REPO_DIR         Source clone directory (default: <archive_root>/source)
@@ -26,6 +33,7 @@ Environment:
   CRAFT_WIKI_VIEWER_SRC       Go viewer source directory (default: ./internal/viewer)
   CRAFT_WIKI_HOST             Host to bind (default: 127.0.0.1)
   CRAFT_WIKI_PORT             Default viewer port (default: 42420)
+  CRAFT_WIKI_TARGETS          Same as --targets (the option takes precedence)
 EOF
 }
 
@@ -59,6 +67,25 @@ timestamp() {
   fi
 }
 
+# Resolve TARGETS (comma-separated) into SELECTED_TARGETS, validated and deduplicated.
+select_targets() {
+  local requested=() target known seen=" "
+  SELECTED_TARGETS=()
+  IFS=, read -r -a requested <<<"${TARGETS// /}"
+  [ "${#requested[@]}" -gt 0 ] || requested=("${ALL_TARGETS[@]}")
+  for target in "${requested[@]}"; do
+    [ -n "$target" ] || continue
+    for known in "${ALL_TARGETS[@]}"; do
+      [ "$target" = "$known" ] && break
+    done
+    [ "$target" = "$known" ] || die "unknown target: $target (supported: ${ALL_TARGETS[*]})"
+    case "$seen" in *" $target "*) continue ;; esac
+    seen="$seen$target "
+    SELECTED_TARGETS+=("$target")
+  done
+  [ "${#SELECTED_TARGETS[@]}" -gt 0 ] || die "no targets selected"
+}
+
 clone_repo() {
   mkdir -p "$(dirname "$REPO_DIR")"
   if [ -d "$REPO_DIR/.git" ]; then
@@ -79,7 +106,10 @@ build_wiki() {
 }
 
 build_viewers() {
-  local out_root="$ROOT/launchers"
+  local out_root="$ROOT/launchers" target
+  select_targets
+  # Start clean so launchers/ holds exactly the binaries recorded in provenance.
+  rm -rf "$out_root"
   mkdir -p "$out_root"
   VIEWER_TARGETS=()
   VIEWER_BINARIES=()
@@ -103,12 +133,9 @@ build_viewers() {
     echo "Built $output"
   }
 
-  build_target windows amd64 windows-amd64
-  build_target windows arm64 windows-arm64
-  build_target darwin amd64 darwin-amd64
-  build_target darwin arm64 darwin-arm64
-  build_target linux amd64 linux-amd64
-  build_target linux arm64 linux-arm64
+  for target in "${SELECTED_TARGETS[@]}"; do
+    build_target "${target%-*}" "${target#*-}" "$target"
+  done
 }
 
 archive_wiki() {
@@ -158,19 +185,81 @@ EOF
       "${VIEWER_TARGETS[$i]}" "${VIEWER_BINARIES[$i]#"$root_abs"/}" "$(sha256 "${VIEWER_BINARIES[$i]}")"
   done >> "$ROOT/provenance.toml"
 
+  write_readme "$root_abs"
   printf 'Archived wiki at %s\n' "$ROOT"
 }
 
-launch_help() {
-  if [ ! -d "$DIST_DIR" ]; then
-    echo "Missing dist directory: $DIST_DIR" >&2
-    exit 1
-  fi
-  platform="$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | tr '[:upper:]' '[:lower:]')"
-  printf 'Use: ./craft-archive/documentation/craft-wiki/launchers/%s/craft-wiki-viewer --root "%s" --host "%s" --port "%s"\n' "$platform" "$DIST_DIR" "$HOST" "$PORT"
+write_readme() {
+  local root_abs="$1" i
+  {
+    cat <<EOF
+Craft Wiki - offline archive
+
+Source: storytold/craft-wiki, branch $branch, commit $commit
+Built:  $built_at
+
+To open the wiki, run the viewer for your system from this directory:
+
+EOF
+    for i in "${!VIEWER_BINARIES[@]}"; do
+      printf '  %-14s %s\n' "${VIEWER_TARGETS[$i]}" "${VIEWER_BINARIES[$i]#"$root_abs"/}"
+    done
+    cat <<'EOF'
+
+The viewer serves the adjacent dist/ directory on http://127.0.0.1:42420
+(loopback only) and opens your browser. Options:
+
+  --port <n>   port 0-65535; use --port 0 if 42420 is taken
+  --root <dir> site directory (found automatically next to launchers/)
+  --host <h>   127.0.0.1 or localhost only
+  --no-open    do not open the browser
+
+This is a static, read-only copy: sign-in and the CMS of the live site do
+not work offline. Keep dist/ next to launchers/ when copying the archive.
+
+On macOS, a downloaded viewer may be blocked as unsigned; allow it under
+System Settings > Privacy & Security, or run:
+  xattr -d com.apple.quarantine launchers/darwin-*/craft-wiki-viewer
+
+provenance.toml records the source commit, build details, the rendered
+site's hash and the SHA-256 of every viewer binary.
+EOF
+  } > "$ROOT/README.txt"
 }
 
-case "${1:-}" in
+launch_help() {
+  [ -d "$DIST_DIR" ] || die "missing dist directory: $DIST_DIR"
+  local goos goarch binary
+  case "$(uname -s)" in
+    Linux) goos=linux ;;
+    Darwin) goos=darwin ;;
+    MINGW*|MSYS*|CYGWIN*) goos=windows ;;
+    *) die "unsupported OS: $(uname -s)" ;;
+  esac
+  case "$(uname -m)" in
+    x86_64|amd64) goarch=amd64 ;;
+    aarch64|arm64) goarch=arm64 ;;
+    *) die "unsupported architecture: $(uname -m)" ;;
+  esac
+  binary="$ROOT/launchers/$goos-$goarch/craft-wiki-viewer"
+  if [ "$goos" = windows ]; then
+    binary="$binary.exe"
+  fi
+  [ -f "$binary" ] || die "no viewer for $goos-$goarch: $binary (build it with: launcher --targets $goos-$goarch)"
+  printf 'Use: %q --root %q --host %q --port %q\n' "$binary" "$DIST_DIR" "$HOST" "$PORT"
+}
+
+action="${1:-}"
+[ "$#" -gt 0 ] && shift
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --targets) TARGETS="${2:?--targets requires a comma-separated list}"; shift 2 ;;
+    --targets=*) TARGETS="${1#*=}"; shift ;;
+    *) usage; die "unrecognized argument: $1" ;;
+  esac
+done
+
+case "$action" in
   clone)
     clone_repo
     ;;
