@@ -278,7 +278,7 @@ verification = "gpg"
 Each asset's `verification` records the strongest check the archive run performed on it:
 
 | Value | Meaning |
-|---|---|
+| --- | --- |
 | `gpg` | Detached `.asc` signature verified against the pinned release key. |
 | `checksums` | SHA-256 matched the release's `SHA256SUMS.txt`. That list is itself GPG-verified when a `SHA256SUMS.txt.asc` exists; otherwise the run warns that GPG provenance is not confirmed. |
 | `apple-codesign-unchecked` | macOS DMG that is neither in `SHA256SUMS.txt` nor GPG-signed. Its authenticity rests on Apple code signing and notarization, which the archive run cannot check. Verify it on a Mac, for example with `spctl -a -vv -t install` on the mounted app, before relying on it. |
@@ -295,3 +295,13 @@ The workflow is intentionally data-driven:
 - release assets and checksums are stored next to the clone
 
 This makes each archive run auditable and reproducible, while still tracking the latest upstream release at run time.
+
+## Splitting the Archive
+
+One parent dir for each
+
+```bash
+mise run archive --no-macos --no-linux-x86_64-deb --destination ~/Downloads/craft-app-archive-win-x64
+mise run archive --no-windows-x64 --no-linux-x86_64-deb --destination ~/Downloads/craft-app-archive-macos
+mise run archive --no-macos --no-windows-x64 --destination ~/Downloads/craft-app-archive-linux-x86_64
+```
