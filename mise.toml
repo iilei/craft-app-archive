@@ -66,5 +66,5 @@ fi
 if [[ "$usage_verify_signatures" != true ]]; then
   archive_args+=(--verify-signatures false)
 fi
-CRAFT_GPG_KEY_FILE="$(pwd)/keys/storytold-release-key.asc" CRAFT_GPG_FINGERPRINT="9F494AB282B2F20C80D16128EC2AAF6D2213BF17" bash scripts/archive-craft-apps.sh "${archive_args[@]}"
+CRAFT_GPG_KEY_FILE="$(pwd)/keys/storytold-release-key.asc" CRAFT_GPG_FINGERPRINT="2B76741B414AAD6CD33E631213A005C0B9D7C3ED" bash scripts/archive-craft-apps.sh "${archive_args[@]}"
 '''
