@@ -8,6 +8,9 @@ VIEWER_SRC="${CRAFT_WIKI_VIEWER_SRC:-$(pwd)/internal/viewer}"
 HOST="${CRAFT_WIKI_HOST:-127.0.0.1}"
 PORT="${CRAFT_WIKI_PORT:-42420}"
 TARGETS="${CRAFT_WIKI_TARGETS:-}"
+# Same settings as the app archive's --retries / --retry-delay, which export them.
+RETRIES="${CRAFT_RETRIES:-3}"
+RETRY_DELAY="${CRAFT_RETRY_DELAY:-5}"
 ALL_TARGETS=(windows-amd64 windows-arm64 darwin-amd64 darwin-arm64 linux-amd64 linux-arm64)
 
 usage() {
@@ -35,10 +38,33 @@ Environment:
   CRAFT_WIKI_HOST             Host to bind (default: 127.0.0.1)
   CRAFT_WIKI_PORT             Default viewer port (default: 42420)
   CRAFT_WIKI_TARGETS          Same as --targets (the option takes precedence)
+  CRAFT_RETRIES               Retries after a failed git or npm network step (default: 3)
+  CRAFT_RETRY_DELAY           Seconds before the first retry; grows per attempt (default: 5)
 EOF
 }
 
 die() { echo "ERROR: $*" >&2; exit 1; }
+
+case "$RETRIES$RETRY_DELAY" in
+  *[!0-9]*|'') die "CRAFT_RETRIES and CRAFT_RETRY_DELAY must be non-negative integers" ;;
+esac
+
+# Run a command, retrying up to RETRIES times with a growing delay
+# (RETRY_DELAY, 2x, 3x, ...). Usage: retry <description> <command...>
+retry() {
+  local description="$1" attempt=0 wait
+  shift
+  until "$@"; do
+    if [ "$attempt" -ge "$RETRIES" ]; then
+      echo "ERROR: $description failed after $((attempt + 1)) attempt(s)" >&2
+      return 1
+    fi
+    attempt=$((attempt + 1))
+    wait=$((RETRY_DELAY * attempt))
+    echo "WARN: $description failed; retrying in ${wait}s ($attempt/$RETRIES)" >&2
+    sleep "$wait"
+  done
+}
 
 if command -v sha256sum >/dev/null 2>&1; then
   SHA256=(sha256sum)
@@ -91,16 +117,26 @@ clone_repo() {
   mkdir -p "$(dirname "$REPO_DIR")"
   if [ -d "$REPO_DIR/.git" ]; then
     [ -z "$(git -c core.longpaths=true -C "$REPO_DIR" status --porcelain)" ] || die "local changes in clone prevent update: $REPO_DIR"
-    git -c core.longpaths=true -C "$REPO_DIR" fetch --depth 20 --tags origin main
+    retry "git fetch craft-wiki" git -c core.longpaths=true -C "$REPO_DIR" fetch --depth 20 --tags origin main
     git -c core.longpaths=true -C "$REPO_DIR" checkout -B main FETCH_HEAD
   else
-    git clone -c core.longpaths=true --depth 20 --branch main https://github.com/storytold/craft-wiki.git "$REPO_DIR"
+    retry "git clone craft-wiki" clone_fresh
   fi
 }
 
+# A failed clone can leave a partial directory behind; start each attempt clean.
+clone_fresh() {
+  rm -rf -- "$REPO_DIR"
+  git clone -c core.longpaths=true --depth 20 --branch main https://github.com/storytold/craft-wiki.git "$REPO_DIR"
+}
+
+# npm ci downloads packages (and starts from a clean node_modules each time).
+npm_ci() { (cd "$REPO_DIR" && npm ci); }
+
 build_wiki() {
   clone_repo
-  (cd "$REPO_DIR" && npm ci && npm run build)
+  retry "npm ci" npm_ci
+  (cd "$REPO_DIR" && npm run build)
   rm -rf "$DIST_DIR"
   # Archives built before the rename kept the site in dist/; drop that stale copy.
   if [ "$DIST_DIR" != "$ROOT/dist" ] && [ -d "$ROOT/dist" ] && [ -f "$ROOT/provenance.toml" ]; then

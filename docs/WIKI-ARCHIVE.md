@@ -52,6 +52,8 @@ mise run wiki:launch --destination ~/archives/craft-wiki
 
 Relative paths resolve from this repository's directory, because mise runs tasks there; use an absolute path for any other location. The environment variable `CRAFT_WIKI_ARCHIVE_ROOT` does the same; `--destination` takes precedence.
 
+The git clone/fetch and `npm ci` steps retry failed network requests: 3 retries by default, waiting 5 s, 10 s and 15 s. Set `CRAFT_RETRIES` and `CRAFT_RETRY_DELAY` to change that; `mise run archive` sets them from its `--retries` and `--retry-delay` options.
+
 Keep the wiki archive outside the app archive's destination: `mise run archive --overwrite` replaces its destination as a whole, which would delete a wiki stored inside it.
 
 ## Open the archived wiki

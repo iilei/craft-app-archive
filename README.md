@@ -71,7 +71,7 @@ mise run archive --wiki-targets linux-amd64,windows-amd64   # only these viewers
 mise run archive --no-wiki                                  # apps only
 ```
 
-If the wiki build fails, the run is kept like any other failure; `--resume` skips the finished apps and retries the wiki. `mise run wiki:archive` still works on its own for a separate wiki archive (see [docs/WIKI-ARCHIVE.md](docs/WIKI-ARCHIVE.md)).
+The wiki's git clone and `npm ci` are retried with the same `--retries` / `--retry-delay` settings as the apps. If the wiki build still fails, the run is kept like any other failure; `--resume` skips the finished apps and retries the wiki. `mise run wiki:archive` still works on its own for a separate wiki archive (see [docs/WIKI-ARCHIVE.md](docs/WIKI-ARCHIVE.md)).
 
 ## Choose where the archive is written
 
