@@ -31,6 +31,21 @@ EOF
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
+if command -v sha256sum >/dev/null 2>&1; then
+  SHA256=(sha256sum)
+elif command -v shasum >/dev/null 2>&1; then
+  SHA256=(shasum -a 256)
+else
+  SHA256=()
+fi
+sha256() { "${SHA256[@]}" "$@" | awk '{print $1}'; }
+
+# Hash of a directory tree that depends only on relative paths and contents:
+# one "<sha256>  ./<path>" line per file in byte order, hashed as a whole.
+tree_sha256() {
+  (cd "$1" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 "${SHA256[@]}") | sha256
+}
+
 # RFC 3339 time in the local zone (honours TZ), e.g. 2026-11-07T11:05:00+01:00.
 # One date call keeps time and offset consistent; %z works with GNU and BSD date,
 # while %:z is GNU-only, so the colon is inserted here. Falls back to UTC.
@@ -66,6 +81,8 @@ build_wiki() {
 build_viewers() {
   local out_root="$ROOT/launchers"
   mkdir -p "$out_root"
+  VIEWER_TARGETS=()
+  VIEWER_BINARIES=()
 
   build_target() {
     local goos="$1"
@@ -81,6 +98,8 @@ build_viewers() {
     fi
 
     (cd "$VIEWER_SRC" && CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -o "$output" .)
+    VIEWER_TARGETS+=("$target_name")
+    VIEWER_BINARIES+=("$output")
     echo "Built $output"
   }
 
@@ -93,16 +112,18 @@ build_viewers() {
 }
 
 archive_wiki() {
+  [ "${#SHA256[@]}" -gt 0 ] || die "sha256sum or shasum is required"
   build_started_at="$(timestamp)"
   build_wiki
   built_at="$(timestamp)"
   build_viewers
 
   commit="$(git -C "$REPO_DIR" rev-parse HEAD)"
-  branch="$(git -C "$REPO_DIR" rev-branch 2>/dev/null || echo main)"
+  branch="$(git -C "$REPO_DIR" symbolic-ref --short HEAD)"
   node_version="$(node --version 2>/dev/null || echo unknown)"
-  npm_lock_sha="$(sha256sum "$REPO_DIR/package-lock.json" 2>/dev/null | awk '{print $1}' || echo unknown)"
-  dist_sha="$(find "$DIST_DIR" -type f -exec sha256sum {} + 2>/dev/null | sha256sum | awk '{print $1}' || echo unknown)"
+  npm_lock_sha="$(sha256 "$REPO_DIR/package-lock.json")"
+  [ -n "$(find "$DIST_DIR" -type f -print -quit)" ] || die "no files in dist directory: $DIST_DIR"
+  dist_sha="$(tree_sha256 "$DIST_DIR")"
 
   cat > "$ROOT/provenance.toml" <<EOF
 schema_version = 1
@@ -128,8 +149,14 @@ rendered_output = "static-site"
 viewer_host = "127.0.0.1"
 viewer_port = 42420
 viewer_binary_name = "craft-wiki-viewer"
-viewer_binary_sha256 = "unknown"
 EOF
+
+  local i root_abs
+  root_abs="$(cd "$ROOT" && pwd)"
+  for i in "${!VIEWER_BINARIES[@]}"; do
+    printf '\n[[viewer_binaries]]\ntarget = "%s"\npath = "%s"\nsha256 = "%s"\n' \
+      "${VIEWER_TARGETS[$i]}" "${VIEWER_BINARIES[$i]#"$root_abs"/}" "$(sha256 "${VIEWER_BINARIES[$i]}")"
+  done >> "$ROOT/provenance.toml"
 
   printf 'Archived wiki at %s\n' "$ROOT"
 }
