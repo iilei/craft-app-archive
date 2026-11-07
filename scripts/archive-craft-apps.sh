@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ROOT="${CRAFT_ARCHIVE_DIR:-craft-archive}"
+TARGET_ROOT="$ROOT"
+TEMP_ROOT=""
 MANIFEST="${CRAFT_APPS_MANIFEST:-apps.tsv}"
 API="https://api.github.com"
 DEPTH=20
@@ -104,9 +106,11 @@ while (($#)); do
   case "$1" in
     --destination)
       ROOT="${2:?--destination requires a path}"
+      TARGET_ROOT="$ROOT"
       shift 2 ;;
     --destination=*)
       ROOT="${1#*=}"
+      TARGET_ROOT="$ROOT"
       [[ -n "$ROOT" ]] || die "--destination requires a path"
       shift ;;
     --overwrite)
@@ -154,14 +158,31 @@ command -v curl >/dev/null || die "curl wird benötigt"
 command -v jq >/dev/null || die "jq wird benötigt (mise install)"
 [[ -f "$MANIFEST" ]] || die "Manifest fehlt: $MANIFEST"
 
-if [[ -e "$ROOT" ]]; then
+if [[ -e "$TARGET_ROOT" ]]; then
   if [[ "$OVERWRITE" == true ]]; then
-    rm -rf -- "$ROOT"
+    mkdir -p "$(dirname "$TARGET_ROOT")"
+    TEMP_ROOT="$(mktemp -d "$(dirname "$TARGET_ROOT")/.$(basename "$TARGET_ROOT").tmp.XXXXXX")"
+    ROOT="$TEMP_ROOT"
   else
-    die "destination exists: $ROOT (pass --overwrite to replace it)"
+    die "destination exists: $TARGET_ROOT (pass --overwrite to replace it)"
+  fi
+else
+  mkdir -p "$(dirname "$TARGET_ROOT")"
+  if [[ "$OVERWRITE" == true ]]; then
+    TEMP_ROOT="$(mktemp -d "$(dirname "$TARGET_ROOT")/.$(basename "$TARGET_ROOT").tmp.XXXXXX")"
+    ROOT="$TEMP_ROOT"
+  else
+    mkdir -p "$TARGET_ROOT"
+    ROOT="$TARGET_ROOT"
   fi
 fi
-mkdir -p "$ROOT"
+
+cleanup_temp_root() {
+  if [[ -n "$TEMP_ROOT" && -d "$TEMP_ROOT" ]]; then
+    rm -rf -- "$TEMP_ROOT"
+  fi
+}
+trap cleanup_temp_root EXIT
 
 if [[ "$VERIFY_SIGNATURES" == true ]]; then
   command -v gpg >/dev/null || die "gpg wird für Signaturprüfung benötigt"
@@ -170,7 +191,7 @@ if [[ "$VERIFY_SIGNATURES" == true ]]; then
   GNUPGHOME_TMP="$(mktemp -d)"
   chmod 700 "$GNUPGHOME_TMP"
   export GNUPGHOME="$GNUPGHOME_TMP"
-  trap 'rm -rf "$GNUPGHOME_TMP"' EXIT
+  trap 'rm -rf "$GNUPGHOME_TMP"; cleanup_temp_root' EXIT
   gpg --batch --quiet --import "$CRAFT_GPG_KEY_FILE"
   expected_fpr="$(printf '%s' "$CRAFT_GPG_FINGERPRINT" | tr '[:lower:]' '[:upper:]' | tr -d ' ')"
   imported_fpr="$(gpg --batch --with-colons --fingerprint | awk -F: '$1=="fpr" {print toupper($10); exit}')"
@@ -353,5 +374,11 @@ while IFS=$'\t' read -r group category slug display repo; do
 
   rm -f "$assets_file"
 done < "$MANIFEST"
+
+if [[ -n "$TEMP_ROOT" ]]; then
+  rm -rf -- "$TARGET_ROOT"
+  mv -- "$TEMP_ROOT" "$TARGET_ROOT"
+  ROOT="$TARGET_ROOT"
+fi
 
 echo "Fertig: $ROOT"
