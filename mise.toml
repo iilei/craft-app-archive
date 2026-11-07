@@ -13,7 +13,7 @@ usage = '''
 flag "-d --depth <depth>" default="20" help="Git history depth for each clone"
 flag "--destination <path>" default="craft-archive" help="Archive output root directory"
 flag "--macos" default="true" help="Download the macOS universal DMG"
-flag "--windows-x64" default="true" help="Download the Windows x64 portable package (setup fallback when unavailable)"
+flag "--windows-x64" default="true" help="Download the Windows x64 portable package; skipped when the release has none"
 flag "--windows-arm64" default="false" help="Download the Windows ARM64 portable package"
 flag "--windows-x86" default="false" help="Download the Windows x86 portable package"
 flag "--linux-x86_64-deb" default="true" help="Download Linux x86_64 Debian package"

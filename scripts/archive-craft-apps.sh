@@ -275,11 +275,6 @@ while IFS=$'\t' read -r group category slug display repo; do
       local url name file hash expected sig_url sig_name verification=none
       url="$(asset_url "$release" "$regex")"
       name="$(asset_name "$release" "$regex")"
-      if [[ -z "$url" && "$platform" == windows-x64 ]]; then
-        url="$(asset_url "$release" 'x64-setup\.exe$|windows-x64.*\.exe$')"
-        name="$(asset_name "$release" 'x64-setup\.exe$|windows-x64.*\.exe$')"
-        portable=false
-      fi
       if [[ -z "$url" ]]; then
         echo "WARN: kein Release-Asset für $platform ($repo)" >&2
         return 0
