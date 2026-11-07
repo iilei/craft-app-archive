@@ -136,6 +136,17 @@ build_viewers() {
   for target in "${SELECTED_TARGETS[@]}"; do
     build_target "${target%-*}" "${target#*-}" "$target"
   done
+  install_start_scripts
+}
+
+# Copy the double-click entry points to the archive root. They resolve every
+# path from their own location, so the archive folder stays relocatable.
+install_start_scripts() {
+  local src="$VIEWER_SRC/start"
+  cp "$src/start.sh" "$src/start.command" "$ROOT/"
+  chmod +x "$ROOT/start.sh" "$ROOT/start.command"
+  # cmd.exe expects CRLF line endings regardless of how the template was checked out.
+  awk '{ sub(/\r$/, ""); printf "%s\r\n", $0 }' "$src/start.cmd" > "$ROOT/start.cmd"
 }
 
 archive_wiki() {
@@ -198,7 +209,14 @@ Craft Wiki - offline archive
 Source: storytold/craft-wiki, branch $branch, commit $commit
 Built:  $built_at
 
-To open the wiki, run the viewer for your system from this directory:
+To open the wiki, start it from this folder:
+
+  Windows  double-click start.cmd
+  macOS    double-click start.command
+  Linux    run ./start.sh
+
+The folder is self-contained: move or copy it anywhere (another disk, a USB
+stick, another machine) and the start scripts keep working. Viewers included:
 
 EOF
     for i in "${!VIEWER_BINARIES[@]}"; do
@@ -206,8 +224,8 @@ EOF
     done
     cat <<'EOF'
 
-The viewer serves the adjacent dist/ directory on http://127.0.0.1:42420
-(loopback only) and opens your browser. Options:
+The viewer serves dist/ on http://127.0.0.1:42420 (loopback only) and opens
+your browser. Options, passed to the start scripts or the viewer directly:
 
   --port <n>   port 0-65535; use --port 0 if 42420 is taken
   --root <dir> site directory (found automatically next to launchers/)
@@ -217,9 +235,9 @@ The viewer serves the adjacent dist/ directory on http://127.0.0.1:42420
 This is a static, read-only copy: sign-in and the CMS of the live site do
 not work offline. Keep dist/ next to launchers/ when copying the archive.
 
-On macOS, a downloaded viewer may be blocked as unsigned; allow it under
-System Settings > Privacy & Security, or run:
-  xattr -d com.apple.quarantine launchers/darwin-*/craft-wiki-viewer
+On macOS, a downloaded archive may be blocked as unsigned; allow it under
+System Settings > Privacy & Security, or run in this folder:
+  xattr -dr com.apple.quarantine .
 
 provenance.toml records the source commit, build details, the rendered
 site's hash and the SHA-256 of every viewer binary.
