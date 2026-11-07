@@ -37,7 +37,7 @@ craft-archive/
 
 - `mise`
 - `git`
-- `bash`
+- `bash` (on Windows: Git Bash from [Git for Windows](https://git-scm.com/download/win); run `mise` from a Git Bash terminal. From PowerShell or cmd, `bash` is usually WSL's launcher, so the tasks stop with an error.)
 - `curl`
 - `jq`
 - `gpg` (required by the default signature verification)
