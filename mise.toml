@@ -30,11 +30,19 @@ flag "--linux-aarch64-pkg-tar-zst" default="false" help="Download Linux ARM64/aa
 flag "--linux-riscv64-deb" default="false" help="Download Linux RISC-V 64-bit Debian package"
 flag "--linux-riscv64-rpm" default="false" help="Download Linux RISC-V 64-bit RPM"
 flag "--linux-riscv64-tar-gz" default="false" help="Download Linux RISC-V 64-bit tar.gz bundle"
-flag "--verify-signatures" default="true" help="Verify available release signatures (disable with --no-verify-signatures)"
+flag "--verify-signatures" default="true" help="Verify available release signatures (disable with --no-verify-signatures or NO_VERIFY_SIGNATURE=1)"
 '''
-# Fetch/import is isolated in its own script. Pin both the 64-bit ID used to
-# retrieve the key and its full fingerprint; never trust a keyserver response alone.
+# NO_VERIFY_SIGNATURE is an environment-level opt-out and takes precedence over
+# the usage flag. Avoid fetching the GPG key when verification is disabled.
+shell = "bash -c"
 run = '''
-bash scripts/fetch-release-key.sh
-CRAFT_GPG_KEY_FILE="$(pwd)/keys/storytold-release-key.asc" CRAFT_GPG_FINGERPRINT="9F494AB282B2F20C80D16128EC2AAF6D2213BF17" bash scripts/archive-craft-apps.sh --depth "$usage_depth" --macos "$usage_macos" --windows-x64 "$usage_windows_x64" --windows-arm64 "$usage_windows_arm64" --windows-x86 "$usage_windows_x86" --verify-signatures "$usage_verify_signatures" --asset linux-x86_64-deb "$usage_linux_x86_64_deb" --asset linux-x86_64-appimage "$usage_linux_x86_64_appimage" --asset linux-x86_64-flatpak "$usage_linux_x86_64_flatpak" --asset linux-x86_64-rpm "$usage_linux_x86_64_rpm" --asset linux-x86_64-tar-gz "$usage_linux_x86_64_tar_gz" --asset linux-x86_64-pkg-tar-zst "$usage_linux_x86_64_pkg_tar_zst" --asset linux-aarch64-deb "$usage_linux_aarch64_deb" --asset linux-aarch64-appimage "$usage_linux_aarch64_appimage" --asset linux-aarch64-flatpak "$usage_linux_aarch64_flatpak" --asset linux-aarch64-rpm "$usage_linux_aarch64_rpm" --asset linux-aarch64-tar-gz "$usage_linux_aarch64_tar_gz" --asset linux-aarch64-pkg-tar-zst "$usage_linux_aarch64_pkg_tar_zst" --asset linux-riscv64-deb "$usage_linux_riscv64_deb" --asset linux-riscv64-rpm "$usage_linux_riscv64_rpm" --asset linux-riscv64-tar-gz "$usage_linux_riscv64_tar_gz"
+set -eu
+verify_signatures="$usage_verify_signatures"
+case "${NO_VERIFY_SIGNATURE:-}" in
+  1|true|yes|on|TRUE|YES|ON) verify_signatures=false ;;
+esac
+if [[ "$verify_signatures" == true ]]; then
+  bash scripts/fetch-release-key.sh
+fi
+CRAFT_GPG_KEY_FILE="$(pwd)/keys/storytold-release-key.asc" CRAFT_GPG_FINGERPRINT="9F494AB282B2F20C80D16128EC2AAF6D2213BF17" bash scripts/archive-craft-apps.sh --depth "$usage_depth" --macos "$usage_macos" --windows-x64 "$usage_windows_x64" --windows-arm64 "$usage_windows_arm64" --windows-x86 "$usage_windows_x86" --verify-signatures "$verify_signatures" --asset linux-x86_64-deb "$usage_linux_x86_64_deb" --asset linux-x86_64-appimage "$usage_linux_x86_64_appimage" --asset linux-x86_64-flatpak "$usage_linux_x86_64_flatpak" --asset linux-x86_64-rpm "$usage_linux_x86_64_rpm" --asset linux-x86_64-tar-gz "$usage_linux_x86_64_tar_gz" --asset linux-x86_64-pkg-tar-zst "$usage_linux_x86_64_pkg_tar_zst" --asset linux-aarch64-deb "$usage_linux_aarch64_deb" --asset linux-aarch64-appimage "$usage_linux_aarch64_appimage" --asset linux-aarch64-flatpak "$usage_linux_aarch64_flatpak" --asset linux-aarch64-rpm "$usage_linux_aarch64_rpm" --asset linux-aarch64-tar-gz "$usage_linux_aarch64_tar_gz" --asset linux-aarch64-pkg-tar-zst "$usage_linux_aarch64_pkg_tar_zst" --asset linux-riscv64-deb "$usage_linux_riscv64_deb" --asset linux-riscv64-rpm "$usage_linux_riscv64_rpm" --asset linux-riscv64-tar-gz "$usage_linux_riscv64_tar_gz"
 '''
