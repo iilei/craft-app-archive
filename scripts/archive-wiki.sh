@@ -29,6 +29,8 @@ Environment:
 EOF
 }
 
+die() { echo "ERROR: $*" >&2; exit 1; }
+
 # RFC 3339 time in the local zone (honours TZ), e.g. 2026-11-07T11:05:00+01:00.
 # One date call keeps time and offset consistent; %z works with GNU and BSD date,
 # while %:z is GNU-only, so the colon is inserted here. Falls back to UTC.
@@ -45,8 +47,9 @@ timestamp() {
 clone_repo() {
   mkdir -p "$(dirname "$REPO_DIR")"
   if [ -d "$REPO_DIR/.git" ]; then
-    git -c core.longpaths=true -C "$REPO_DIR" fetch --depth 20 --tags origin
-    git -c core.longpaths=true -C "$REPO_DIR" checkout main
+    [ -z "$(git -c core.longpaths=true -C "$REPO_DIR" status --porcelain)" ] || die "local changes in clone prevent update: $REPO_DIR"
+    git -c core.longpaths=true -C "$REPO_DIR" fetch --depth 20 --tags origin main
+    git -c core.longpaths=true -C "$REPO_DIR" checkout -B main FETCH_HEAD
   else
     git clone -c core.longpaths=true --depth 20 --branch main https://github.com/storytold/craft-wiki.git "$REPO_DIR"
   fi
@@ -54,12 +57,10 @@ clone_repo() {
 
 build_wiki() {
   clone_repo
-  mkdir -p "$DIST_DIR"
-  cd "$REPO_DIR"
-  npm ci
-  npm run build
+  (cd "$REPO_DIR" && npm ci && npm run build)
   rm -rf "$DIST_DIR"
-  cp -R dist "$DIST_DIR"
+  mkdir -p "$(dirname "$DIST_DIR")"
+  cp -R "$REPO_DIR/dist" "$DIST_DIR"
 }
 
 build_viewers() {
