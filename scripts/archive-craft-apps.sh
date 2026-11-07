@@ -10,6 +10,7 @@ WANT_MACOS=true
 WANT_WINDOWS_X64=true
 WANT_WINDOWS_ARM64=false
 WANT_WINDOWS_X86=false
+OVERWRITE=false
 AUTH=()
 [[ -n "${GH_TOKEN:-}" ]] && AUTH=(-H "Authorization: Bearer $GH_TOKEN")
 
@@ -38,6 +39,8 @@ Usage: archive-craft-apps.sh [options]
 
 Options:
   --depth N                       Git shallow clone depth (default: 20)
+  --destination PATH              Archive root directory (default: craft-archive)
+  --overwrite                     Replace an existing archive directory
   --macos true|false             macOS installer download (default: true)
   --windows-x64 true|false       Windows x64 download (default: true)
   --windows-arm64 true|false     Windows ARM64 download (default: false)
@@ -99,6 +102,16 @@ parse_bool_arg() {
 
 while (($#)); do
   case "$1" in
+    --destination)
+      ROOT="${2:?--destination requires a path}"
+      shift 2 ;;
+    --destination=*)
+      ROOT="${1#*=}"
+      [[ -n "$ROOT" ]] || die "--destination requires a path"
+      shift ;;
+    --overwrite)
+      OVERWRITE=true
+      shift ;;
     --depth)
       DEPTH="${2:?--depth requires a value}"; shift 2 ;;
     --macos)
@@ -141,6 +154,15 @@ command -v curl >/dev/null || die "curl wird benötigt"
 command -v jq >/dev/null || die "jq wird benötigt (mise install)"
 [[ -f "$MANIFEST" ]] || die "Manifest fehlt: $MANIFEST"
 
+if [[ -e "$ROOT" ]]; then
+  if [[ "$OVERWRITE" == true ]]; then
+    rm -rf -- "$ROOT"
+  else
+    die "destination exists: $ROOT (pass --overwrite to replace it)"
+  fi
+fi
+mkdir -p "$ROOT"
+
 if [[ "$VERIFY_SIGNATURES" == true ]]; then
   command -v gpg >/dev/null || die "gpg wird für Signaturprüfung benötigt"
   [[ -f "${CRAFT_GPG_KEY_FILE:-}" ]] || die "setze CRAFT_GPG_KEY_FILE auf einen unabhängig beschafften, vertrauenswürdigen Release-Key"
@@ -162,7 +184,6 @@ verify_signature() {
   grep -q "^\[GNUPG:\] VALIDSIG $expected_fpr " <<<"$status" || die "GPG-Signatur ungültig oder nicht vom gepinnten Schlüssel: $data"
 }
 
-mkdir -p "$ROOT"
 while IFS=$'\t' read -r group category slug display repo; do
   [[ -z "${repo:-}" || "$group" == \#* ]] && continue
   category="${category# }"; category="${category% }"
