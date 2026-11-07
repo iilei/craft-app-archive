@@ -202,7 +202,8 @@ verify_signature() {
   local signature="$1" data="$2"
   local status
   status="$(gpg --batch --status-fd 1 --verify "$signature" "$data" 2>/dev/null || true)"
-  grep -q "^\[GNUPG:\] VALIDSIG $expected_fpr " <<<"$status" || die "GPG-Signatur ungültig oder nicht vom gepinnten Schlüssel: $data"
+  # VALIDSIG lists the signing (sub)key first and the primary key last; pin the primary.
+  awk -v fpr="$expected_fpr" '$1=="[GNUPG:]" && $2=="VALIDSIG" && toupper($NF)==fpr {ok=1} END {exit !ok}' <<<"$status" || die "GPG-Signatur ungültig oder nicht vom gepinnten Schlüssel: $data"
 }
 
 while IFS=$'\t' read -r group category slug display repo; do
