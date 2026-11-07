@@ -2,8 +2,9 @@
 set -euo pipefail
 
 # Trust is anchored to the published release key and its full fingerprint.
-# We do not query a keyserver; the official release asset is the source of truth.
-readonly EXPECTED_FINGERPRINT="9F494AB282B2F20C80D16128EC2AAF6D2213BF17"
+# PR #343 documents this key in production and records successful signature verification:
+# https://github.com/storytold/artcraft-services/pull/343
+readonly EXPECTED_FINGERPRINT="2B76741B414AAD6CD33E631213A005C0B9D7C3ED"
 readonly KEY_URL="https://github.com/storytold/artcraft/releases/latest/download/release-signing-key.asc"
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
