@@ -68,7 +68,7 @@ or:
 mise run archive --no-verify-signatures
 ```
 
-When verification is disabled, the archive task skips fetching the GPG key and does not check detached signatures. SHA-256 hashes are still calculated, and downloaded files are compared with `SHA256SUMS.txt` when the release provides it.
+When verification is disabled, the archive task skips fetching the GPG key and does not check detached signatures. SHA-256 hashes are still calculated, and downloaded files are compared with the published checksums.
 
 ## Additional architecture and package formats
 
@@ -114,17 +114,19 @@ mise run archive --windows-arm64 --windows-x86
 
 ## Key fetch / verification
 
-The release verification is pinned to a GPG fingerprint. To fetch and check the public key independently:
+The release verification is pinned to the ArtCraft Linux repository signing public key. The current pinned fingerprint is:
+
+```text
+2B76741B414AAD6CD33E631213A005C0B9D7C3ED
+```
+
+To fetch and verify the key independently from the official ArtCraft release asset:
 
 ```bash
 mise run keys:fetch
 ```
 
-The task looks up key ID `EC2AAF6D2213BF17` and requires this full fingerprint:
-
-```text
-9F494AB282B2F20C80D16128EC2AAF6D2213BF17
-```
+This fetches the current release key from the official ArtCraft GitHub release asset and verifies that its fingerprint matches the pinned value above.
 
 The exported key is written to:
 
@@ -132,7 +134,9 @@ The exported key is written to:
 keys/storytold-release-key.asc
 ```
 
-The short key ID is only a lookup hint. The full fingerprint is the trust anchor and should be independently confirmed before treating it as trusted.
+The full fingerprint is the trust anchor. The short key ID is only a lookup hint and should not be treated as trusted in isolation.
+
+The key change is aligned with the ArtCraft Linux repository signing rollout documented in [storytold/artcraft-services#343](https://github.com/storytold/artcraft-services/pull/343).
 
 ## Provenance format
 
