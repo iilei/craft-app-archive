@@ -366,10 +366,13 @@ while IFS=$'\x1f' read -r group category slug display repo; do
     # A failed clone can leave a partial directory behind; start each attempt clean.
     clone_fresh() {
       rm -rf -- "$repo_dir"
-      git clone -c core.longpaths=true --depth "$DEPTH" --single-branch --branch "$source_ref" "$clone_url" "$repo_dir"
+      git clone -c core.longpaths=true -c core.logAllRefUpdates=false --depth "$DEPTH" --single-branch --branch "$source_ref" "$clone_url" "$repo_dir"
     }
     retry "git clone $repo" clone_fresh
   fi
+  # The reflog records the local git user's name and email; keep it out of the archive.
+  git -C "$repo_dir" config --replace-all core.logAllRefUpdates false
+  rm -rf -- "$repo_dir/.git/logs"
   commit="$(git -C "$repo_dir" rev-parse HEAD)"
 
   assets_file="$dest/.assets.tmp"
