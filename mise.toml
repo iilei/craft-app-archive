@@ -7,6 +7,16 @@ jq = "1.8.1"
 description = "Fetch the pinned Craft release signing key and verify its full fingerprint"
 run = "bash scripts/fetch-release-key.sh"
 
+[tasks."apps:fmt"]
+description = "Align apps.txt into fixed-width columns (2+ spaces apart, \"-\" for empty cells)"
+run = '''
+jq -Rrs -f scripts/format-apps.jq apps.txt > apps.txt.tmp && mv apps.txt.tmp apps.txt || { rm -f apps.txt.tmp; exit 1; }
+'''
+
+[tasks."apps:check"]
+description = "Fail if apps.txt is not formatted (run mise run apps:fmt to fix)"
+run = "jq -Rrs -f scripts/format-apps.jq apps.txt | diff -u apps.txt -"
+
 [tasks.archive]
 description = "Shallow-clone Craft Apps and archive latest release installers with provenance"
 usage = '''

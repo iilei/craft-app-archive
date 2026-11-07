@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="${CRAFT_ARCHIVE_DIR:-craft-archive}"
 TARGET_ROOT="$ROOT"
 TEMP_ROOT=""
-MANIFEST="${CRAFT_APPS_MANIFEST:-apps.tsv}"
+MANIFEST="${CRAFT_APPS_MANIFEST:-apps.txt}"
 API="https://api.github.com"
 DEPTH=20
 VERIFY_SIGNATURES=true
@@ -54,7 +54,7 @@ Options:
 
 Environment:
   CRAFT_ARCHIVE_DIR             Output root directory (default: craft-archive)
-  CRAFT_APPS_MANIFEST           App manifest path (default: apps.tsv)
+  CRAFT_APPS_MANIFEST           App manifest path (default: apps.txt)
   GH_TOKEN                     GitHub API token (optional)
   CRAFT_GPG_KEY_FILE           Public key file for release verification
   CRAFT_GPG_FINGERPRINT        Expected GPG fingerprint for the trusted release key
@@ -206,12 +206,11 @@ verify_signature() {
   awk -v fpr="$expected_fpr" '$1=="[GNUPG:]" && $2=="VALIDSIG" && toupper($NF)==fpr {ok=1} END {exit !ok}' <<<"$status" || die "GPG signature invalid or not made by the pinned key: $data"
 }
 
-# Tab is IFS whitespace, so consecutive tabs would collapse and shift fields
-# after an empty category; read via a non-whitespace separator instead.
+# apps.txt columns are separated by 2+ spaces (or tabs); "-" marks an empty cell.
+# Split on a non-whitespace separator so read keeps every field in place.
 while IFS=$'\x1f' read -r group category slug display repo; do
   [[ -z "${repo:-}" || "$group" == \#* ]] && continue
-  category="${category# }"; category="${category% }"
-  slug="${slug# }"; slug="${slug% }"
+  [[ "$category" == - ]] && category=""
   dest="$ROOT/$group"
   [[ -n "$category" ]] && dest="$dest/$category"
   dest="$dest/$slug"
@@ -382,7 +381,7 @@ while IFS=$'\x1f' read -r group category slug display repo; do
   } > "$dest/provenance.toml"
 
   rm -f "$assets_file"
-done < <(tr '\t' '\037' < "$MANIFEST")
+done < <(sed -E $'s/^[[:space:]]+|[[:space:]]+$//g; s/\t| {2,}/\x1f/g' "$MANIFEST")
 
 if [[ -n "$TEMP_ROOT" ]]; then
   rm -rf -- "$TARGET_ROOT"
