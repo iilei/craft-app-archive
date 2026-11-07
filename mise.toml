@@ -12,11 +12,11 @@ description = "Shallow-clone Craft Apps and archive latest release installers wi
 usage = '''
 flag "-d --depth <depth>" default="20" help="Git history depth for each clone"
 flag "--destination <path>" default="craft-archive" help="Archive output root directory"
-flag "--macos" default="true" help="Download the macOS universal DMG"
-flag "--windows-x64" default="true" help="Download the Windows x64 portable package; skipped when the release has none"
+flag "--macos" default="true" negate="--no-macos" help="Download the macOS universal DMG"
+flag "--windows-x64" default="true" negate="--no-windows-x64" help="Download the Windows x64 portable package; skipped when the release has none"
 flag "--windows-arm64" default="false" help="Download the Windows ARM64 portable package"
 flag "--windows-x86" default="false" help="Download the Windows x86 portable package"
-flag "--linux-x86_64-deb" default="true" help="Download Linux x86_64 Debian package"
+flag "--linux-x86_64-deb" default="true" negate="--no-linux-x86_64-deb" help="Download Linux x86_64 Debian package"
 flag "--linux-x86_64-appimage" default="false" help="Download Linux x86_64 AppImage"
 flag "--linux-x86_64-flatpak" default="false" help="Download Linux x86_64 Flatpak"
 flag "--linux-x86_64-rpm" default="false" help="Download Linux x86_64 RPM"
@@ -32,7 +32,7 @@ flag "--linux-riscv64-deb" default="false" help="Download Linux RISC-V 64-bit De
 flag "--linux-riscv64-rpm" default="false" help="Download Linux RISC-V 64-bit RPM"
 flag "--linux-riscv64-tar-gz" default="false" help="Download Linux RISC-V 64-bit tar.gz bundle"
 flag "--overwrite" default="false" help="Replace an existing archive directory"
-flag "--verify-signatures" default="true" help="Verify available release signatures (disable with --no-verify-signatures or NO_VERIFY_SIGNATURE=1)"
+flag "--verify-signatures" default="true" negate="--no-verify-signatures" help="Verify available release signatures (disable with --no-verify-signatures or NO_VERIFY_SIGNATURE=1)"
 '''
 shell = "bash -c"
 run = '''
@@ -90,6 +90,15 @@ fi
 if [[ "$usage_windows_x86" != false ]]; then
   archive_args+=(--windows-x86 "$usage_windows_x86")
 fi
+for asset_key in \
+  linux-x86_64-deb linux-x86_64-appimage linux-x86_64-flatpak linux-x86_64-rpm \
+  linux-x86_64-tar-gz linux-x86_64-pkg-tar-zst \
+  linux-aarch64-deb linux-aarch64-appimage linux-aarch64-flatpak linux-aarch64-rpm \
+  linux-aarch64-tar-gz linux-aarch64-pkg-tar-zst \
+  linux-riscv64-deb linux-riscv64-rpm linux-riscv64-tar-gz; do
+  usage_var="usage_${asset_key//-/_}"
+  archive_args+=(--asset "$asset_key" "${!usage_var}")
+done
 if [[ "$usage_verify_signatures" != true ]]; then
   archive_args+=(--verify-signatures false)
 fi
