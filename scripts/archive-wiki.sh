@@ -241,6 +241,11 @@ This is a static, read-only copy: sign-in and the CMS of the live site do
 not work offline. Keep documentation/ next to launchers/ when copying the
 archive.
 
+If the browser was already open, the wiki opens as a new tab there but may
+stay in the background (GNOME on Wayland does not let it come to the front).
+Switch to the browser, or open http://127.0.0.1:42420 yourself (with --port,
+use the address the viewer prints).
+
 On macOS, a downloaded archive may be blocked as unsigned; allow it under
 System Settings > Privacy & Security, or run in this folder:
   xattr -dr com.apple.quarantine .
