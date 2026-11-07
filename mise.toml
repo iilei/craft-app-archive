@@ -1,0 +1,17 @@
+[tools]
+# jq parses GitHub release metadata; git/curl/bash are expected from the host
+# (Git Bash on Windows, or the usual Linux command-line tools).
+jq = "1.8.1"
+
+[tasks.archive]
+description = "Shallow-clone Craft Apps and archive latest platform installers with provenance"
+usage = '''
+flag "-d --depth <depth>" default="20" help="Git history depth for each clone"
+flag "--macos" default="true" help="Download the macOS universal DMG"
+flag "--windows-x64" default="true" help="Download the Windows x64 portable package (setup fallback when unavailable)"
+flag "--linux-x86_64-deb" default="true" help="Download the Linux x86_64 Debian package"
+flag "--verify-signatures" default="false" help="Verify release signatures using a locally trusted GPG key"
+'''
+# mise's task usage parser exposes these as usage_* variables. Boolean flags
+# also support --no-macos, --no-windows-x64, and --no-linux-x86_64-deb.
+run = 'bash scripts/archive-craft-apps.sh --depth "$usage_depth" --macos "$usage_macos" --windows-x64 "$usage_windows_x64" --linux-x86_64-deb "$usage_linux_x86_64_deb" --verify-signatures "$usage_verify_signatures"'
