@@ -162,13 +162,14 @@ build_viewers() {
     local out="$out_root/$target_name"
     mkdir -p "$out"
     out="$(cd "$out" && pwd)"  # absolute, since go build runs from $VIEWER_SRC
+    # -trimpath keeps local paths (home directory, toolchain location) out of the binary.
 
     local output="$out/craft-wiki-viewer"
     if [ "$goos" = "windows" ]; then
       output="$out/craft-wiki-viewer.exe"
     fi
 
-    (cd "$VIEWER_SRC" && CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -o "$output" .)
+    (cd "$VIEWER_SRC" && CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath -o "$output" .)
     VIEWER_TARGETS+=("$target_name")
     VIEWER_BINARIES+=("$output")
     echo "Built $output"
