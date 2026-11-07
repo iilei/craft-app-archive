@@ -218,13 +218,23 @@ checksums_sha256 = "..."
 signature_verification_requested = true
 
 [[assets]]
-platform = "macos"
+platform = "linux-x86_64-deb"
 filename = "..."
 url = "..."
 sha256 = "..."
 portable = false
 signature_url = "..."
+verification = "gpg"
 ```
+
+Each asset's `verification` records the strongest check the archive run performed on it:
+
+| Value | Meaning |
+|---|---|
+| `gpg` | Detached `.asc` signature verified against the pinned release key. |
+| `checksums` | SHA-256 matched the release's `SHA256SUMS.txt`. That list is itself GPG-verified when a `SHA256SUMS.txt.asc` exists; otherwise the run warns that GPG provenance is not confirmed. |
+| `apple-codesign-unchecked` | macOS DMG that is neither in `SHA256SUMS.txt` nor GPG-signed. Its authenticity rests on Apple code signing and notarization, which the archive run cannot check. Verify it on a Mac, for example with `spctl -a -vv -t install` on the mounted app, before relying on it. |
+| `none` | The release has no `SHA256SUMS.txt` and no signature was verified (none published, or verification disabled). Only the recorded `sha256` is available to detect later changes. |
 
 ## Reproducibility
 
