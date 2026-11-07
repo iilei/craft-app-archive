@@ -116,5 +116,5 @@ else
   stage=""
 fi
 
-echo "Fertig: $target"
+echo "Done: $target"
 '''
