@@ -107,6 +107,18 @@ If you cannot change that setting, a short destination close to the drive root k
 mise run archive --destination C:/ca
 ```
 
+## Edit the app list
+
+`apps.txt` is a fixed-width table: columns are separated by at least two spaces, so a single space can appear inside a value (`Craft Anything`), and `-` marks an empty cell (third-party apps have no category). Values must not contain two consecutive spaces.
+
+Add or change rows without worrying about alignment (tabs or any run of 2+ spaces work as separators), then realign the file:
+
+```bash
+mise run apps:fmt
+```
+
+`mise run apps:check` fails with a diff when the file is not formatted, which makes it suitable for CI. Both tasks reject rows with the wrong number of columns.
+
 ## Opt out of verification
 
 By default, release signatures are checked. To disable them:
@@ -165,7 +177,7 @@ mise run archive \
 mise run archive --windows-arm64 --windows-x86
 ```
 
-Windows downloads are portable `.zip` packages only. If a release has no portable package for a selected architecture, that download is skipped with a warning; installers are not used as a fallback. Apps that publish no Windows portable package at all are not listed in `apps.tsv`.
+Windows downloads are portable `.zip` packages only. If a release has no portable package for a selected architecture, that download is skipped with a warning; installers are not used as a fallback. Apps that publish no Windows portable package at all are not listed in `apps.txt`.
 
 ## Key fetch / verification
 
@@ -240,7 +252,7 @@ Each asset's `verification` records the strongest check the archive run performe
 
 The workflow is intentionally data-driven:
 
-- repo list is in `apps.tsv`
+- repo list is in `apps.txt`
 - release selection is runtime-based
 - exact commit and tag are persisted in `provenance.toml`
 - release assets and checksums are stored next to the clone
