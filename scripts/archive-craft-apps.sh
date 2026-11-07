@@ -206,7 +206,9 @@ verify_signature() {
   awk -v fpr="$expected_fpr" '$1=="[GNUPG:]" && $2=="VALIDSIG" && toupper($NF)==fpr {ok=1} END {exit !ok}' <<<"$status" || die "GPG-Signatur ungültig oder nicht vom gepinnten Schlüssel: $data"
 }
 
-while IFS=$'\t' read -r group category slug display repo; do
+# Tab is IFS whitespace, so consecutive tabs would collapse and shift fields
+# after an empty category; read via a non-whitespace separator instead.
+while IFS=$'\x1f' read -r group category slug display repo; do
   [[ -z "${repo:-}" || "$group" == \#* ]] && continue
   category="${category# }"; category="${category% }"
   slug="${slug# }"; slug="${slug% }"
@@ -380,7 +382,7 @@ while IFS=$'\t' read -r group category slug display repo; do
   } > "$dest/provenance.toml"
 
   rm -f "$assets_file"
-done < "$MANIFEST"
+done < <(tr '\t' '\037' < "$MANIFEST")
 
 if [[ -n "$TEMP_ROOT" ]]; then
   rm -rf -- "$TARGET_ROOT"
