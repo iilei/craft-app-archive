@@ -70,6 +70,8 @@ The viewer locates the `documentation/` directory next to `launchers/` automatic
 ./craft-wiki-viewer --root ./documentation --port 42421 --no-open
 ```
 
+If the browser is already running, the wiki opens as a new tab in it. On GNOME with Wayland, that browser window can stay in the background: GNOME only lets an app bring its window to the front when the launch carries an activation token, and starting the viewer from the file manager or Activities does not provide one. Switch to the browser yourself, or open the printed address.
+
 Supported options:
 
 - `--root <directory>`: site root (normally inferred from the viewer's location)
