@@ -65,7 +65,7 @@ Turn off a default target with `--no-macos`, `--no-windows-x64` or `--no-linux-x
 
 The `archive` task accepts `--destination` and `--overwrite`. The destination is the archive root; the script creates the app/category directories below it. Without `--overwrite`, the task refuses to use an existing destination directory. With `--overwrite`, it replaces that directory, so double-check the path before running.
 
-You can run the task while your shell is in a different directory by using mise's global `-C` / `--cd` flag. `-C` points to the directory containing this repository's `mise.toml`; `--destination` is interpreted relative to the shell's current directory when it is relative. Use an absolute destination to make the location unambiguous.
+You can run the task while your shell is in a different directory by using mise's global `-C` / `--cd` flag. `-C` points to the directory containing this repository's `mise.toml`. mise runs the task in that directory, so a relative `--destination` is resolved from the repository directory, not from the shell's current directory. Use an absolute destination for any location outside the repository.
 
 For example, if the shell is currently in your home directory, the repository is `~/code/craft-app-archive`, and you want the archive at `~/Downloads/craft-app-archive`:
 
@@ -113,7 +113,7 @@ GH_TOKEN=$(gh auth token) mise run archive --resume
 Windows limits a full path to 260 characters (`MAX_PATH`) by default; Linux and macOS allow far longer paths. This has nothing to do with `\` versus `/` separators. Each clone lives several levels deep, and during a run the archive is built in a temporary stage directory next to the destination, for example:
 
 ```text
-C:\Users\<you>\code\craft-app-archive\.craft-archive.stage.Ab12Cd\official-apps\graphics-and-design\photocraft\source\
+C:\Users\<you>\code\craft-app-archive\.craft-archive.stage\official-apps\graphics-and-design\photocraft\source\
 ```
 
 Files nested inside a repository can push the total past 260 characters, and Git for Windows then fails with `Filename too long`.

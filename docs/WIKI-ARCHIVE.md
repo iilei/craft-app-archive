@@ -5,7 +5,7 @@
 ## Output
 
 ```text
-craft-archive/documentation/craft-wiki/
+craft-wiki/
 ├── source/             # shallow clone of storytold/craft-wiki
 ├── dist/               # Astro static output
 ├── launchers/          # viewer binaries, grouped by GOOS-GOARCH
@@ -39,6 +39,19 @@ mise run wiki:launcher:build -- --targets windows-amd64,darwin-arm64,linux-amd64
 
 `mise run wiki:archive` accepts the same `--targets` option. The environment variable `CRAFT_WIKI_TARGETS` accepts the same comma-separated target names; `--targets` takes precedence. Supported targets are `windows-amd64`, `windows-arm64`, `darwin-amd64`, `darwin-arm64`, `linux-amd64`, and `linux-arm64`. Each build replaces `launchers/`, so it contains exactly the targets recorded in `provenance.toml`.
 
+## Choose where the wiki archive is written
+
+By default the wiki archive is written to `craft-wiki/` in this repository. Every wiki task (`wiki:build`, `wiki:launcher:build`, `wiki:archive`, `wiki:launch`) accepts `--destination` to use another directory; pass the same one to each task you run:
+
+```sh
+mise run wiki:archive --destination ~/archives/craft-wiki
+mise run wiki:launch --destination ~/archives/craft-wiki
+```
+
+Relative paths resolve from this repository's directory, because mise runs tasks there; use an absolute path for any other location. The environment variable `CRAFT_WIKI_ARCHIVE_ROOT` does the same; `--destination` takes precedence.
+
+Keep the wiki archive outside the app archive's destination: `mise run archive --overwrite` replaces its destination as a whole, which would delete a wiki stored inside it.
+
 ## Open the archived wiki
 
 Use the start script for your system in the `craft-wiki/` folder: double-click `start.cmd` on Windows or `start.command` on macOS, or run `./start.sh` on Linux. Each one picks the viewer for the machine's architecture and passes extra arguments through, for example `./start.sh --port 0`.
@@ -46,7 +59,7 @@ Use the start script for your system in the `craft-wiki/` folder: double-click `
 The binaries can also be run directly, for example:
 
 ```sh
-./craft-archive/documentation/craft-wiki/launchers/linux-amd64/craft-wiki-viewer
+./craft-wiki/launchers/linux-amd64/craft-wiki-viewer
 ```
 
 `mise run wiki:launch` prints the command for the current machine.

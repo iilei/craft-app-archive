@@ -7,3 +7,6 @@
 /.craft-archive.stage/
 /.craft-archive.lock/
 /.craft-archive.backup.*/
+
+# Default wiki archive of `mise run wiki:archive`
+/craft-wiki/
