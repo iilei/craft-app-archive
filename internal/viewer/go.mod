@@ -1,3 +1,3 @@
-module github.com/iilei/craft-app-archive/internal/viewer
+module craft-wiki-viewer
 
 go 1.21
