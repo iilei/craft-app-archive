@@ -272,7 +272,7 @@ while IFS=$'\t' read -r group category slug display repo; do
 
     download_asset() {
       local platform="$1" regex="$2" portable="$3"
-      local url name file hash expected sig_url sig_name
+      local url name file hash expected sig_url sig_name verification=none
       url="$(asset_url "$release" "$regex")"
       name="$(asset_name "$release" "$regex")"
       if [[ -z "$url" && "$platform" == windows-x64 ]]; then
@@ -289,8 +289,17 @@ while IFS=$'\t' read -r group category slug display repo; do
       hash="$(sha256 "$file")"
       if [[ -n "$checksums_name" ]]; then
         expected="$(awk -v n="$name" '$2==n || $2=="*"n {print $1; exit}' "$dest/$checksums_name")"
-        [[ -n "$expected" ]] || die "Prüfsummenliste nennt $name nicht ($repo)"
-        [[ "${expected,,}" == "${hash,,}" ]] || die "SHA-256 stimmt nicht: $name"
+        if [[ -n "$expected" ]]; then
+          [[ "${expected,,}" == "${hash,,}" ]] || die "SHA-256 stimmt nicht: $name"
+          verification=checksums
+        elif [[ "$platform" == macos ]]; then
+          # macOS DMGs are not in SHA256SUMS.txt and have no .asc; they rely on
+          # Apple code signing / notarization, which can only be checked on a Mac.
+          echo "WARN: $name nicht in Prüfsummenliste; Herkunft nur per Apple-Codesignatur prüfbar ($repo)" >&2
+          verification=apple-codesign-unchecked
+        else
+          die "Prüfsummenliste nennt $name nicht ($repo)"
+        fi
       fi
       sig_url="$(asset_url "$release" "^${name//./\\.}\\.asc$")"
       sig_name="$(asset_name "$release" "^${name//./\\.}\\.asc$")"
@@ -299,8 +308,9 @@ while IFS=$'\t' read -r group category slug display repo; do
       fi
       if [[ "$VERIFY_SIGNATURES" == true && -n "$sig_url" ]]; then
         verify_signature "$dest/$sig_name" "$file"
+        verification=gpg
       fi
-      printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$platform" "$name" "$url" "$hash" "$portable" "${sig_url:-}" >> "$assets_file"
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$platform" "$name" "$url" "$hash" "$portable" "$verification" "${sig_url:-}" >> "$assets_file"
     }
 
     [[ "$WANT_MACOS" == true ]] && download_asset macos 'universal.*\.dmg$|macos.*\.dmg$' false
@@ -361,7 +371,7 @@ while IFS=$'\t' read -r group category slug display repo; do
     printf 'checksums_sha256 = %s\n' "$(q "$checksums_sha256")"
     printf 'signature_verification_requested = %s\n' "$VERIFY_SIGNATURES"
     printf 'archived_at = %s\n\n' "$(q "$(date -u '+%Y-%m-%dT%H:%M:%SZ')")"
-    while IFS=$'\t' read -r platform name url hash portable sig_url; do
+    while IFS=$'\t' read -r platform name url hash portable verification sig_url; do
       [[ -n "$platform" ]] || continue
       printf '[[assets]]\n'
       printf 'platform = %s\n' "$(q "$platform")"
@@ -369,7 +379,8 @@ while IFS=$'\t' read -r group category slug display repo; do
       printf 'url = %s\n' "$(q "$url")"
       printf 'sha256 = %s\n' "$(q "$hash")"
       printf 'portable = %s\n' "$portable"
-      printf 'signature_url = %s\n\n' "$(q "$sig_url")"
+      printf 'signature_url = %s\n' "$(q "$sig_url")"
+      printf 'verification = %s\n\n' "$(q "$verification")"
     done < "$assets_file"
   } > "$dest/provenance.toml"
 
