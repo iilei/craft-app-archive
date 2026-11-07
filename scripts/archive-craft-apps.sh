@@ -70,7 +70,7 @@ sha256() {
   elif command -v shasum >/dev/null 2>&1; then
     shasum -a 256 "$1" | awk '{print $1}'
   else
-    die "sha256sum oder shasum ist erforderlich"
+    die "sha256sum or shasum is required"
   fi
 }
 fetch_json() {
@@ -89,7 +89,7 @@ bool_value() {
   local value="$1" name="$2"
   case "$value" in
     true|false) printf '%s\n' "$value" ;;
-    *) die "$name muss true oder false sein" ;;
+    *) die "$name must be true or false" ;;
   esac
 }
 
@@ -145,7 +145,7 @@ case "${NO_VERIFY_SIGNATURE:-}" in
     VERIFY_SIGNATURES=false ;;
 esac
 
-[[ "$DEPTH" =~ ^[1-9][0-9]*$ ]] || die "depth muss eine positive ganze Zahl sein: $DEPTH"
+[[ "$DEPTH" =~ ^[1-9][0-9]*$ ]] || die "depth must be a positive integer: $DEPTH"
 for value in "$WANT_MACOS" "$WANT_WINDOWS_X64" "$WANT_WINDOWS_ARM64" "$WANT_WINDOWS_X86" "$VERIFY_SIGNATURES"; do
   [[ "$value" == true || "$value" == false ]] || die "boolean options must be true or false"
 done
@@ -153,10 +153,10 @@ for value in "${ASSET_SELECTION[@]}"; do
   [[ "$value" == true || "$value" == false ]] || die "asset selection values must be true or false"
 done
 
-command -v git >/dev/null || die "git wird benötigt"
-command -v curl >/dev/null || die "curl wird benötigt"
-command -v jq >/dev/null || die "jq wird benötigt (mise install)"
-[[ -f "$MANIFEST" ]] || die "Manifest fehlt: $MANIFEST"
+command -v git >/dev/null || die "git is required"
+command -v curl >/dev/null || die "curl is required"
+command -v jq >/dev/null || die "jq is required (mise install)"
+[[ -f "$MANIFEST" ]] || die "manifest not found: $MANIFEST"
 
 if [[ -e "$TARGET_ROOT" ]]; then
   if [[ "$OVERWRITE" == true ]]; then
@@ -185,9 +185,9 @@ cleanup_temp_root() {
 trap cleanup_temp_root EXIT
 
 if [[ "$VERIFY_SIGNATURES" == true ]]; then
-  command -v gpg >/dev/null || die "gpg wird für Signaturprüfung benötigt"
-  [[ -f "${CRAFT_GPG_KEY_FILE:-}" ]] || die "setze CRAFT_GPG_KEY_FILE auf einen unabhängig beschafften, vertrauenswürdigen Release-Key"
-  [[ -n "${CRAFT_GPG_FINGERPRINT:-}" ]] || die "setze CRAFT_GPG_FINGERPRINT auf den unabhängig verifizierten Fingerprint"
+  command -v gpg >/dev/null || die "gpg is required for signature verification"
+  [[ -f "${CRAFT_GPG_KEY_FILE:-}" ]] || die "set CRAFT_GPG_KEY_FILE to an independently obtained, trusted release key"
+  [[ -n "${CRAFT_GPG_FINGERPRINT:-}" ]] || die "set CRAFT_GPG_FINGERPRINT to the independently verified fingerprint"
   GNUPGHOME_TMP="$(mktemp -d)"
   chmod 700 "$GNUPGHOME_TMP"
   export GNUPGHOME="$GNUPGHOME_TMP"
@@ -195,7 +195,7 @@ if [[ "$VERIFY_SIGNATURES" == true ]]; then
   gpg --batch --quiet --import "$CRAFT_GPG_KEY_FILE"
   expected_fpr="$(printf '%s' "$CRAFT_GPG_FINGERPRINT" | tr '[:lower:]' '[:upper:]' | tr -d ' ')"
   imported_fpr="$(gpg --batch --with-colons --fingerprint | awk -F: '$1=="fpr" {print toupper($10); exit}')"
-  [[ "$imported_fpr" == "$expected_fpr" ]] || die "der importierte GPG-Key-Fingerprint stimmt nicht mit CRAFT_GPG_FINGERPRINT überein"
+  [[ "$imported_fpr" == "$expected_fpr" ]] || die "imported GPG key fingerprint does not match CRAFT_GPG_FINGERPRINT"
 fi
 
 verify_signature() {
@@ -203,7 +203,7 @@ verify_signature() {
   local status
   status="$(gpg --batch --status-fd 1 --verify "$signature" "$data" 2>/dev/null || true)"
   # VALIDSIG lists the signing (sub)key first and the primary key last; pin the primary.
-  awk -v fpr="$expected_fpr" '$1=="[GNUPG:]" && $2=="VALIDSIG" && toupper($NF)==fpr {ok=1} END {exit !ok}' <<<"$status" || die "GPG-Signatur ungültig oder nicht vom gepinnten Schlüssel: $data"
+  awk -v fpr="$expected_fpr" '$1=="[GNUPG:]" && $2=="VALIDSIG" && toupper($NF)==fpr {ok=1} END {exit !ok}' <<<"$status" || die "GPG signature invalid or not made by the pinned key: $data"
 }
 
 # Tab is IFS whitespace, so consecutive tabs would collapse and shift fields
@@ -219,7 +219,7 @@ while IFS=$'\x1f' read -r group category slug display repo; do
   mkdir -p "$dest"
   echo "==> $display ($repo)"
 
-  repo_json="$(fetch_json "$API/repos/$repo")" || die "Repository nicht erreichbar: $repo"
+  repo_json="$(fetch_json "$API/repos/$repo")" || die "repository not reachable: $repo"
   release=""
   if release="$(fetch_json "$API/repos/$repo/releases/latest" 2>/dev/null)"; then
     [[ "$(jq -r '.tag_name // empty' <<<"$release")" ]] || release=""
@@ -245,7 +245,7 @@ while IFS=$'\x1f' read -r group category slug display repo; do
 
   clone_url="https://github.com/$repo.git"
   if [[ -d "$repo_dir/.git" ]]; then
-    [[ -z "$(git -c core.longpaths=true -C "$repo_dir" status --porcelain)" ]] || die "lokale Änderungen im Clone verhindern Update: $repo_dir"
+    [[ -z "$(git -c core.longpaths=true -C "$repo_dir" status --porcelain)" ]] || die "local changes in clone prevent update: $repo_dir"
     if [[ "$ref_type" == tag ]]; then
       git -c core.longpaths=true -C "$repo_dir" fetch --depth="$DEPTH" --force origin "refs/tags/$source_ref:refs/tags/$source_ref"
       git -c core.longpaths=true -C "$repo_dir" checkout --detach "$source_ref"
@@ -278,7 +278,7 @@ while IFS=$'\x1f' read -r group category slug display repo; do
       url="$(asset_url "$release" "$regex")"
       name="$(asset_name "$release" "$regex")"
       if [[ -z "$url" ]]; then
-        echo "WARN: kein Release-Asset für $platform ($repo)" >&2
+        echo "WARN: no release asset for $platform ($repo)" >&2
         return 0
       fi
       file="$dest/$name"
@@ -287,15 +287,15 @@ while IFS=$'\x1f' read -r group category slug display repo; do
       if [[ -n "$checksums_name" ]]; then
         expected="$(awk -v n="$name" '$2==n || $2=="*"n {print $1; exit}' "$dest/$checksums_name")"
         if [[ -n "$expected" ]]; then
-          [[ "${expected,,}" == "${hash,,}" ]] || die "SHA-256 stimmt nicht: $name"
+          [[ "${expected,,}" == "${hash,,}" ]] || die "SHA-256 mismatch: $name"
           verification=checksums
         elif [[ "$platform" == macos ]]; then
           # macOS DMGs are not in SHA256SUMS.txt and have no .asc; they rely on
           # Apple code signing / notarization, which can only be checked on a Mac.
-          echo "WARN: $name nicht in Prüfsummenliste; Herkunft nur per Apple-Codesignatur prüfbar ($repo)" >&2
+          echo "WARN: $name not in checksum list; provenance relies on Apple code signing, checkable only on macOS ($repo)" >&2
           verification=apple-codesign-unchecked
         else
-          die "Prüfsummenliste nennt $name nicht ($repo)"
+          die "checksum list does not include $name ($repo)"
         fi
       fi
       sig_url="$(asset_url "$release" "^${name//./\\.}\\.asc$")"
@@ -343,7 +343,7 @@ while IFS=$'\x1f' read -r group category slug display repo; do
         curl -fL --retry 3 "$checksums_sig_url" -o "$dest/$checksums_sig_name"
         verify_signature "$dest/$checksums_sig_name" "$dest/$checksums_name"
       else
-        echo "WARN: keine signierte SHA256SUMS.txt für $repo; GPG-Herkunft nicht bestätigt" >&2
+        echo "WARN: no signed SHA256SUMS.txt for $repo; GPG provenance not confirmed" >&2
       fi
     fi
   fi
@@ -390,4 +390,4 @@ if [[ -n "$TEMP_ROOT" ]]; then
   ROOT="$TARGET_ROOT"
 fi
 
-echo "Fertig: $ROOT"
+echo "Done: $ROOT"
