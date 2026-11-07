@@ -72,13 +72,14 @@ build_viewers() {
     local target_name="$3"
     local out="$out_root/$target_name"
     mkdir -p "$out"
+    out="$(cd "$out" && pwd)"  # absolute, since go build runs from $VIEWER_SRC
 
     local output="$out/craft-wiki-viewer"
     if [ "$goos" = "windows" ]; then
       output="$out/craft-wiki-viewer.exe"
     fi
 
-    CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -o "$output" "$VIEWER_SRC"
+    (cd "$VIEWER_SRC" && CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -o "$output" .)
     echo "Built $output"
   }
 
