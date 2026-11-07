@@ -80,7 +80,7 @@ mise --cd ~/code/craft-app-archive run archive \
   --overwrite
 ```
 
-`-C` / `--cd` tells mise to load and run the task as if started in the repository directory. It does not choose the archive output location; `--destination` does that.
+`-C` / `--cd` tells mise to load and run the task as if started in the repository directory. It does not choose the archive output location; `--destination` does that. Use an absolute destination whenever you want to archive to a location outside the repo.
 
 ## Opt out of verification
 
