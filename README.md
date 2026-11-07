@@ -41,6 +41,8 @@ craft-archive/
 
 ## Quick start
 
+From the repository directory:
+
 ```bash
 mise install
 mise run archive
@@ -49,10 +51,36 @@ mise run archive
 This defaults to:
 
 - clone depth: `20`
+- destination: `craft-archive` under the repository directory
 - macOS: enabled
 - Windows x64: enabled
 - Linux x86_64 .deb: enabled
 - signature verification: enabled
+
+## Choose where the archive is written
+
+The `archive` task accepts `--destination` and `--overwrite`. The destination is the archive root; the script creates the app/category directories below it. Without `--overwrite`, the task refuses to use an existing destination directory. With `--overwrite`, it replaces that directory, so double-check the path before running.
+
+You can run the task while your shell is in a different directory by using mise's global `-C` / `--cd` flag. `-C` points to the directory containing this repository's `mise.toml`; `--destination` is interpreted relative to the shell's current directory when it is relative. Use an absolute destination to make the location unambiguous.
+
+For example, if the shell is currently in your home directory, the repository is `~/code/craft-app-archive`, and you want the archive at `~/Downloads/craft-app-archive`:
+
+```bash
+cd ~
+mise -C ~/code/craft-app-archive run archive \
+  --destination ~/Downloads/craft-app-archive \
+  --overwrite
+```
+
+The equivalent explicit form of the global flag is:
+
+```bash
+mise --cd ~/code/craft-app-archive run archive \
+  --destination ~/Downloads/craft-app-archive \
+  --overwrite
+```
+
+`-C` / `--cd` tells mise to load and run the task as if started in the repository directory. It does not choose the archive output location; `--destination` does that.
 
 ## Opt out of verification
 
@@ -68,7 +96,7 @@ or:
 mise run archive --no-verify-signatures
 ```
 
-When verification is disabled, the archive task skips fetching the GPG key and does not check detached signatures. SHA-256 hashes are still calculated, and downloaded files are compared with the published checksums.
+When verification is disabled, the archive task skips fetching the GPG key and does not check detached signatures. SHA-256 hashes are still calculated, and downloaded files are compared with the published checksum list when available.
 
 ## Additional architecture and package formats
 
