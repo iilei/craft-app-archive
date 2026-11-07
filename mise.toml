@@ -141,6 +141,7 @@ fi
 CRAFT_GPG_KEY_FILE="$(pwd)/keys/storytold-release-key.asc" \
 CRAFT_GPG_FINGERPRINT="2B76741B414AAD6CD33E631213A005C0B9D7C3ED" \
 bash scripts/archive-craft-apps.sh "${archive_args[@]}"
+bash scripts/write-update-notes.sh "$stage" "$target" "$verify_signatures"
 
 if [[ -e "$target" || -L "$target" ]]; then
   backup="$(mktemp -d "$target_parent/.$target_name.backup.XXXXXX")"
