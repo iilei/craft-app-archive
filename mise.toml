@@ -11,6 +11,7 @@ run = "bash scripts/fetch-release-key.sh"
 description = "Shallow-clone Craft Apps and archive latest release installers with provenance"
 usage = '''
 flag "-d --depth <depth>" default="20" help="Git history depth for each clone"
+flag "--destination <path>" default="craft-archive" help="Archive output root directory"
 flag "--macos" default="true" help="Download the macOS universal DMG"
 flag "--windows-x64" default="true" help="Download the Windows x64 portable package (setup fallback when unavailable)"
 flag "--windows-arm64" default="false" help="Download the Windows ARM64 portable package"
@@ -30,6 +31,7 @@ flag "--linux-aarch64-pkg-tar-zst" default="false" help="Download Linux ARM64/aa
 flag "--linux-riscv64-deb" default="false" help="Download Linux RISC-V 64-bit Debian package"
 flag "--linux-riscv64-rpm" default="false" help="Download Linux RISC-V 64-bit RPM"
 flag "--linux-riscv64-tar-gz" default="false" help="Download Linux RISC-V 64-bit tar.gz bundle"
+flag "--overwrite" default="false" help="Replace an existing archive directory"
 flag "--verify-signatures" default="true" help="Verify available release signatures (disable with --no-verify-signatures or NO_VERIFY_SIGNATURE=1)"
 '''
 # NO_VERIFY_SIGNATURE is an environment-level opt-out and takes precedence over
@@ -38,11 +40,31 @@ shell = "bash -c"
 run = '''
 set -eu
 verify_signatures="$usage_verify_signatures"
+archive_args=(--depth "$usage_depth")
+archive_args+=(--destination "$usage_destination")
+if [[ "$usage_overwrite" == true ]]; then
+  archive_args+=(--overwrite)
+fi
 case "${NO_VERIFY_SIGNATURE:-}" in
   1|true|yes|on|TRUE|YES|ON) verify_signatures=false ;;
 esac
 if [[ "$verify_signatures" == true ]]; then
   bash scripts/fetch-release-key.sh
 fi
-CRAFT_GPG_KEY_FILE="$(pwd)/keys/storytold-release-key.asc" CRAFT_GPG_FINGERPRINT="9F494AB282B2F20C80D16128EC2AAF6D2213BF17" bash scripts/archive-craft-apps.sh --depth "$usage_depth" --macos "$usage_macos" --windows-x64 "$usage_windows_x64" --windows-arm64 "$usage_windows_arm64" --windows-x86 "$usage_windows_x86" --verify-signatures "$verify_signatures" --asset linux-x86_64-deb "$usage_linux_x86_64_deb" --asset linux-x86_64-appimage "$usage_linux_x86_64_appimage" --asset linux-x86_64-flatpak "$usage_linux_x86_64_flatpak" --asset linux-x86_64-rpm "$usage_linux_x86_64_rpm" --asset linux-x86_64-tar-gz "$usage_linux_x86_64_tar_gz" --asset linux-x86_64-pkg-tar-zst "$usage_linux_x86_64_pkg_tar_zst" --asset linux-aarch64-deb "$usage_linux_aarch64_deb" --asset linux-aarch64-appimage "$usage_linux_aarch64_appimage" --asset linux-aarch64-flatpak "$usage_linux_aarch64_flatpak" --asset linux-aarch64-rpm "$usage_linux_aarch64_rpm" --asset linux-aarch64-tar-gz "$usage_linux_aarch64_tar_gz" --asset linux-aarch64-pkg-tar-zst "$usage_linux_aarch64_pkg_tar_zst" --asset linux-riscv64-deb "$usage_linux_riscv64_deb" --asset linux-riscv64-rpm "$usage_linux_riscv64_rpm" --asset linux-riscv64-tar-gz "$usage_linux_riscv64_tar_gz"
+if [[ "$usage_macos" != true ]]; then
+  archive_args+=(--macos false)
+fi
+if [[ "$usage_windows_x64" != true ]]; then
+  archive_args+=(--windows-x64 false)
+fi
+if [[ "$usage_windows_arm64" != false ]]; then
+  archive_args+=(--windows-arm64 "$usage_windows_arm64")
+fi
+if [[ "$usage_windows_x86" != false ]]; then
+  archive_args+=(--windows-x86 "$usage_windows_x86")
+fi
+if [[ "$usage_verify_signatures" != true ]]; then
+  archive_args+=(--verify-signatures false)
+fi
+CRAFT_GPG_KEY_FILE="$(pwd)/keys/storytold-release-key.asc" CRAFT_GPG_FINGERPRINT="9F494AB282B2F20C80D16128EC2AAF6D2213BF17" bash scripts/archive-craft-apps.sh "${archive_args[@]}"
 '''
