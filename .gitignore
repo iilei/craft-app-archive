@@ -1,8 +1,9 @@
 # Release signing key fetched by `mise run keys:fetch`
 /keys/
 
-# Default archive output of `mise run archive`, plus its temporary
-# stage/backup directories (left behind only if a run is killed)
+# Default archive output of `mise run archive`, its staging directory (kept after
+# a failed run for --resume), its lock, and backups left only if a run is killed
 /craft-archive/
-/.craft-archive.stage.*/
+/.craft-archive.stage/
+/.craft-archive.lock/
 /.craft-archive.backup.*/
