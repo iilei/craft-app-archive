@@ -5,85 +5,142 @@ ROOT="${CRAFT_ARCHIVE_DIR:-craft-archive}"
 MANIFEST="${CRAFT_APPS_MANIFEST:-apps.tsv}"
 API="https://api.github.com"
 DEPTH=20
+VERIFY_SIGNATURES=true
 WANT_MACOS=true
 WANT_WINDOWS_X64=true
 WANT_WINDOWS_ARM64=false
 WANT_WINDOWS_X86=false
-VERIFY_SIGNATURES=false
 AUTH=()
 [[ -n "${GH_TOKEN:-}" ]] && AUTH=(-H "Authorization: Bearer $GH_TOKEN")
 
-# Selected assets are keyed by normalized target and package format.
-declare -A ASSET_SELECTION=()
-ASSET_SELECTION[linux-x86_64-deb]=true
-ASSET_SELECTION[linux-x86_64-appimage]=false
-ASSET_SELECTION[linux-x86_64-flatpak]=false
-ASSET_SELECTION[linux-x86_64-rpm]=false
-ASSET_SELECTION[linux-x86_64-tar-gz]=false
-ASSET_SELECTION[linux-x86_64-pkg-tar-zst]=false
-ASSET_SELECTION[linux-aarch64-deb]=false
-ASSET_SELECTION[linux-aarch64-appimage]=false
-ASSET_SELECTION[linux-aarch64-flatpak]=false
-ASSET_SELECTION[linux-aarch64-rpm]=false
-ASSET_SELECTION[linux-aarch64-tar-gz]=false
-ASSET_SELECTION[linux-aarch64-pkg-tar-zst]=false
-ASSET_SELECTION[linux-riscv64-deb]=false
-ASSET_SELECTION[linux-riscv64-rpm]=false
-ASSET_SELECTION[linux-riscv64-tar-gz]=false
+# New Linux targets are opt-in and kept independent from the default x86_64 Debian package.
+declare -A ASSET_SELECTION=(
+  [linux-x86_64-deb]=true
+  [linux-x86_64-appimage]=false
+  [linux-x86_64-flatpak]=false
+  [linux-x86_64-rpm]=false
+  [linux-x86_64-tar-gz]=false
+  [linux-x86_64-pkg-tar-zst]=false
+  [linux-aarch64-deb]=false
+  [linux-aarch64-appimage]=false
+  [linux-aarch64-flatpak]=false
+  [linux-aarch64-rpm]=false
+  [linux-aarch64-tar-gz]=false
+  [linux-aarch64-pkg-tar-zst]=false
+  [linux-riscv64-deb]=false
+  [linux-riscv64-rpm]=false
+  [linux-riscv64-tar-gz]=false
+)
 
 usage() {
   cat >&2 <<'EOF'
-Usage: archive-craft-apps.sh [--depth N] [--macos true|false]
-       [--windows-x64 true|false] [--windows-arm64 true|false] [--windows-x86 true|false]
-       [--asset linux-ARCH-FORMAT true|false] [--verify-signatures true|false]
-Environment: CRAFT_ARCHIVE_DIR, CRAFT_APPS_MANIFEST, GH_TOKEN,
-             CRAFT_GPG_KEY_FILE, CRAFT_GPG_FINGERPRINT
+Usage: archive-craft-apps.sh [options]
+
+Options:
+  --depth N                       Git shallow clone depth (default: 20)
+  --macos true|false             macOS installer download (default: true)
+  --windows-x64 true|false       Windows x64 download (default: true)
+  --windows-arm64 true|false     Windows ARM64 download (default: false)
+  --windows-x86 true|false       Windows x86 download (default: false)
+  --asset key true|false         Linux asset selector, e.g. --asset linux-aarch64-deb true
+  --verify-signatures true|false Verify available release signatures (default: true)
+  --no-verify-signatures         Disable signature verification
+  -h, --help                     Show this help
+
+Environment:
+  CRAFT_ARCHIVE_DIR             Output root directory (default: craft-archive)
+  CRAFT_APPS_MANIFEST           App manifest path (default: apps.tsv)
+  GH_TOKEN                     GitHub API token (optional)
+  CRAFT_GPG_KEY_FILE           Public key file for release verification
+  CRAFT_GPG_FINGERPRINT        Expected GPG fingerprint for the trusted release key
+  NO_VERIFY_SIGNATURE           Env opt-out: set to 1/true/yes to disable verification
 EOF
 }
+
 die() { echo "ERROR: $*" >&2; exit 1; }
 q() { printf '%s' "$1" | jq -Rs .; }
 sha256() {
-  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
-  elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'
-  else die "sha256sum oder shasum ist erforderlich"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    die "sha256sum oder shasum ist erforderlich"
   fi
-}
-asset_url() {
-  jq -r --arg re "$1" '[.assets[] | select(.name | test($re; "i"))][0].browser_download_url // empty' <<<"$release"
-}
-asset_name() {
-  jq -r --arg re "$1" '[.assets[] | select(.name | test($re; "i"))][0].name // empty' <<<"$release"
 }
 fetch_json() {
   curl -fsSL --retry 3 "${AUTH[@]}" -H 'Accept: application/vnd.github+json' "$1"
 }
+asset_url() {
+  local body="$1" pattern="$2"
+  jq -r --arg re "$pattern" '[.assets[] | select(.name | test($re; "i"))][0].browser_download_url // empty' <<<"$body"
+}
+asset_name() {
+  local body="$1" pattern="$2"
+  jq -r --arg re "$pattern" '[.assets[] | select(.name | test($re; "i"))][0].name // empty' <<<"$body"
+}
+
+bool_value() {
+  local value="$1" name="$2"
+  case "$value" in
+    true|false) printf '%s\n' "$value" ;;
+    *) die "$name muss true oder false sein" ;;
+  esac
+}
+
+parse_bool_arg() {
+  local arg="$1" value="$2" name="$3"
+  if [[ "$arg" == "--no-"* ]]; then
+    printf '%s\n' false
+    return
+  fi
+  bool_value "$value" "$name"
+}
 
 while (($#)); do
   case "$1" in
-    --depth) DEPTH="${2:?--depth requires a value}"; shift 2 ;;
-    --macos) WANT_MACOS="${2:?--macos requires true or false}"; shift 2 ;;
-    --windows-x64) WANT_WINDOWS_X64="${2:?--windows-x64 requires true or false}"; shift 2 ;;
-    --windows-arm64) WANT_WINDOWS_ARM64="${2:?--windows-arm64 requires true or false}"; shift 2 ;;
-    --windows-x86) WANT_WINDOWS_X86="${2:?--windows-x86 requires true or false}"; shift 2 ;;
+    --depth)
+      DEPTH="${2:?--depth requires a value}"; shift 2 ;;
+    --macos)
+      WANT_MACOS="$(parse_bool_arg "$1" "${2:?--macos requires true or false}" "--macos")"; shift 2 ;;
+    --windows-x64)
+      WANT_WINDOWS_X64="$(parse_bool_arg "$1" "${2:?--windows-x64 requires true or false}" "--windows-x64")"; shift 2 ;;
+    --windows-arm64)
+      WANT_WINDOWS_ARM64="$(parse_bool_arg "$1" "${2:?--windows-arm64 requires true or false}" "--windows-arm64")"; shift 2 ;;
+    --windows-x86)
+      WANT_WINDOWS_X86="$(parse_bool_arg "$1" "${2:?--windows-x86 requires true or false}" "--windows-x86")"; shift 2 ;;
     --asset)
-      key="${2:?--asset requires a target key}"; value="${3:?--asset requires true or false}"
-      [[ -v "ASSET_SELECTION[$key]" ]] || die "unbekanntes Asset-Ziel: $key"
-      ASSET_SELECTION[$key]="$value"; shift 3 ;;
-    --verify-signatures) VERIFY_SIGNATURES="${2:?--verify-signatures requires true or false}"; shift 2 ;;
-    -h|--help) usage; exit 0 ;;
-    *) usage; die "unrecognized argument: $1" ;;
+      key="${2:?--asset requires a target key}"; value="${3:?--asset requires true or false}"; value="$(bool_value "$value" "$key")"; ASSET_SELECTION["$key"]="$value"; shift 3 ;;
+    --verify-signatures)
+      VERIFY_SIGNATURES="$(parse_bool_arg "$1" "${2:?--verify-signatures requires true or false}" "--verify-signatures")"; shift 2 ;;
+    --no-verify-signatures)
+      VERIFY_SIGNATURES=false; shift ;;
+    -h|--help)
+      usage; exit 0 ;;
+    *)
+      usage; die "unrecognized argument: $1" ;;
   esac
 done
+
+# Environment opt-out must override the flag default.
+case "${NO_VERIFY_SIGNATURE:-}" in
+  1|true|yes|on|TRUE|YES|ON)
+    VERIFY_SIGNATURES=false ;;
+esac
+
 [[ "$DEPTH" =~ ^[1-9][0-9]*$ ]] || die "depth muss eine positive ganze Zahl sein: $DEPTH"
-for value in "$WANT_MACOS" "$WANT_WINDOWS_X64" "$WANT_WINDOWS_ARM64" "$WANT_WINDOWS_X86" "$VERIFY_SIGNATURES" "${ASSET_SELECTION[@]}"; do
-  [[ "$value" == true || "$value" == false ]] || die "boolean-Optionen müssen true oder false sein"
+for value in "$WANT_MACOS" "$WANT_WINDOWS_X64" "$WANT_WINDOWS_ARM64" "$WANT_WINDOWS_X86" "$VERIFY_SIGNATURES"; do
+  [[ "$value" == true || "$value" == false ]] || die "boolean options must be true or false"
 done
+for value in "${ASSET_SELECTION[@]}"; do
+  [[ "$value" == true || "$value" == false ]] || die "asset selection values must be true or false"
+done
+
 command -v git >/dev/null || die "git wird benötigt"
 command -v curl >/dev/null || die "curl wird benötigt"
 command -v jq >/dev/null || die "jq wird benötigt (mise install)"
 [[ -f "$MANIFEST" ]] || die "Manifest fehlt: $MANIFEST"
 
-GNUPGHOME_TMP=""
 if [[ "$VERIFY_SIGNATURES" == true ]]; then
   command -v gpg >/dev/null || die "gpg wird für Signaturprüfung benötigt"
   [[ -f "${CRAFT_GPG_KEY_FILE:-}" ]] || die "setze CRAFT_GPG_KEY_FILE auf einen unabhängig beschafften, vertrauenswürdigen Release-Key"
@@ -98,9 +155,9 @@ if [[ "$VERIFY_SIGNATURES" == true ]]; then
   [[ "$imported_fpr" == "$expected_fpr" ]] || die "der importierte GPG-Key-Fingerprint stimmt nicht mit CRAFT_GPG_FINGERPRINT überein"
 fi
 
-# Verify detached signatures only against the independently pinned fingerprint.
 verify_signature() {
-  local signature="$1" data="$2" status
+  local signature="$1" data="$2"
+  local status
   status="$(gpg --batch --status-fd 1 --verify "$signature" "$data" 2>/dev/null || true)"
   grep -q "^\[GNUPG:\] VALIDSIG $expected_fpr " <<<"$status" || die "GPG-Signatur ungültig oder nicht vom gepinnten Schlüssel: $data"
 }
@@ -122,6 +179,7 @@ while IFS=$'\t' read -r group category slug display repo; do
   if release="$(fetch_json "$API/repos/$repo/releases/latest" 2>/dev/null)"; then
     [[ "$(jq -r '.tag_name // empty' <<<"$release")" ]] || release=""
   fi
+
   if [[ -n "$release" ]]; then
     source_ref="$(jq -r '.tag_name' <<<"$release")"
     ref_type=tag
@@ -139,8 +197,8 @@ while IFS=$'\t' read -r group category slug display repo; do
     fi
     release_url=""; release_published=""; release_id=""
   fi
-  clone_url="https://github.com/$repo.git"
 
+  clone_url="https://github.com/$repo.git"
   if [[ -d "$repo_dir/.git" ]]; then
     [[ -z "$(git -C "$repo_dir" status --porcelain)" ]] || die "lokale Änderungen im Clone verhindern Update: $repo_dir"
     if [[ "$ref_type" == tag ]]; then
@@ -158,23 +216,25 @@ while IFS=$'\t' read -r group category slug display repo; do
   assets_file="$dest/.assets.tmp"
   : > "$assets_file"
   checksums_name=""
-  checksums_url=""
   checksums_sha256=""
+
   if [[ -n "$release" ]]; then
-    checksums_url="$(asset_url '^SHA256SUMS\.txt$')"
-    checksums_name="$(asset_name '^SHA256SUMS\.txt$')"
+    checksums_body="$(fetch_json "${API}/repos/$repo/releases/latest" 2>/dev/null || true)"
+    checksums_url="$(asset_url "$checksums_body" '^SHA256SUMS\.txt$')"
+    checksums_name="$(asset_name "$checksums_body" '^SHA256SUMS\.txt$')"
     if [[ -n "$checksums_url" ]]; then
       curl -fL --retry 3 "$checksums_url" -o "$dest/$checksums_name"
       checksums_sha256="$(sha256 "$dest/$checksums_name")"
     fi
 
     download_asset() {
-      local platform="$1" regex="$2" portable="$3" url name file hash expected sig_url sig_name
-      url="$(asset_url "$regex")"
-      name="$(asset_name "$regex")"
+      local platform="$1" regex="$2" portable="$3"
+      local url name file hash expected sig_url sig_name
+      url="$(asset_url "$release" "$regex")"
+      name="$(asset_name "$release" "$regex")"
       if [[ -z "$url" && "$platform" == windows-x64 ]]; then
-        url="$(asset_url 'x64-setup\.exe$|windows-x64.*\.exe$')"
-        name="$(asset_name 'x64-setup\.exe$|windows-x64.*\.exe$')"
+        url="$(asset_url "$release" 'x64-setup\.exe$|windows-x64.*\.exe$')"
+        name="$(asset_name "$release" 'x64-setup\.exe$|windows-x64.*\.exe$')"
         portable=false
       fi
       if [[ -z "$url" ]]; then
@@ -189,10 +249,14 @@ while IFS=$'\t' read -r group category slug display repo; do
         [[ -n "$expected" ]] || die "Prüfsummenliste nennt $name nicht ($repo)"
         [[ "${expected,,}" == "${hash,,}" ]] || die "SHA-256 stimmt nicht: $name"
       fi
-      sig_url="$(asset_url "^${name//./\\.}\\.asc$")"
-      sig_name="$(asset_name "^${name//./\\.}\\.asc$")"
-      if [[ -n "$sig_url" ]]; then curl -fL --retry 3 "$sig_url" -o "$dest/$sig_name"; fi
-      if [[ "$VERIFY_SIGNATURES" == true && -n "$sig_url" ]]; then verify_signature "$dest/$sig_name" "$file"; fi
+      sig_url="$(asset_url "$release" "^${name//./\\.}\\.asc$")"
+      sig_name="$(asset_name "$release" "^${name//./\\.}\\.asc$")"
+      if [[ -n "$sig_url" ]]; then
+        curl -fL --retry 3 "$sig_url" -o "$dest/$sig_name"
+      fi
+      if [[ "$VERIFY_SIGNATURES" == true && -n "$sig_url" ]]; then
+        verify_signature "$dest/$sig_name" "$file"
+      fi
       printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$platform" "$name" "$url" "$hash" "$portable" "${sig_url:-}" >> "$assets_file"
     }
 
@@ -203,25 +267,29 @@ while IFS=$'\t' read -r group category slug display repo; do
 
     for key in "${!ASSET_SELECTION[@]}"; do
       [[ "${ASSET_SELECTION[$key]}" == true ]] || continue
-      arch="${key#linux-}"
-      arch="${arch%%-*}"
-      format="${key#linux-$arch-}"
-      case "$format" in
-        deb) suffix="linux-$arch\\.deb$" ;;
-        appimage) suffix="linux-$arch\\.AppImage$" ;;
-        flatpak) suffix="linux-$arch\\.flatpak$" ;;
-        rpm) suffix="linux-$arch\\.rpm$" ;;
-        tar-gz) suffix="linux-$arch\\.tar\\.gz$" ;;
-        pkg-tar-zst) suffix="linux-$arch\\.pkg\\.tar\\.zst$" ;;
-        *) die "interner Fehler: unbekanntes Paketformat $format" ;;
+      case "$key" in
+        linux-x86_64-deb) download_asset "$key" 'linux-x86_64\.deb$' false ;;
+        linux-x86_64-appimage) download_asset "$key" 'linux-x86_64\.AppImage$' false ;;
+        linux-x86_64-flatpak) download_asset "$key" 'linux-x86_64\.flatpak$' false ;;
+        linux-x86_64-rpm) download_asset "$key" 'linux-x86_64\.rpm$' false ;;
+        linux-x86_64-tar-gz) download_asset "$key" 'linux-x86_64\.tar\.gz$' false ;;
+        linux-x86_64-pkg-tar-zst) download_asset "$key" 'linux-x86_64\.pkg\.tar\.zst$' false ;;
+        linux-aarch64-deb) download_asset "$key" 'linux-aarch64\.deb$' false ;;
+        linux-aarch64-appimage) download_asset "$key" 'linux-aarch64\.AppImage$' false ;;
+        linux-aarch64-flatpak) download_asset "$key" 'linux-aarch64\.flatpak$' false ;;
+        linux-aarch64-rpm) download_asset "$key" 'linux-aarch64\.rpm$' false ;;
+        linux-aarch64-tar-gz) download_asset "$key" 'linux-aarch64\.tar\.gz$' false ;;
+        linux-aarch64-pkg-tar-zst) download_asset "$key" 'linux-aarch64\.pkg\.tar\.zst$' false ;;
+        linux-riscv64-deb) download_asset "$key" 'linux-riscv64\.deb$' false ;;
+        linux-riscv64-rpm) download_asset "$key" 'linux-riscv64\.rpm$' false ;;
+        linux-riscv64-tar-gz) download_asset "$key" 'linux-riscv64\.tar\.gz$' false ;;
       esac
-      download_asset "$key" "$suffix" false
     done
 
     if [[ "$VERIFY_SIGNATURES" == true ]]; then
-      checksums_sig_url="$(asset_url '^SHA256SUMS\.txt\.asc$')"
-      checksums_sig_name="$(asset_name '^SHA256SUMS\.txt\.asc$')"
-      if [[ -n "$checksums_url" && -n "$checksums_sig_url" ]]; then
+      checksums_sig_url="$(asset_url "$release" '^SHA256SUMS\.txt\.asc$')"
+      checksums_sig_name="$(asset_name "$release" '^SHA256SUMS\.txt\.asc$')"
+      if [[ -n "$checksums_sig_url" && -n "$checksums_name" ]]; then
         curl -fL --retry 3 "$checksums_sig_url" -o "$dest/$checksums_sig_name"
         verify_signature "$dest/$checksums_sig_name" "$dest/$checksums_name"
       else
@@ -261,6 +329,8 @@ while IFS=$'\t' read -r group category slug display repo; do
       printf 'signature_url = %s\n\n' "$(q "$sig_url")"
     done < "$assets_file"
   } > "$dest/provenance.toml"
+
   rm -f "$assets_file"
 done < "$MANIFEST"
+
 echo "Fertig: $ROOT"
