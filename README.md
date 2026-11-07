@@ -82,6 +82,29 @@ mise --cd ~/code/craft-app-archive run archive \
 
 `-C` / `--cd` tells mise to load and run the task as if started in the repository directory. It does not choose the archive output location; `--destination` does that. Use an absolute destination whenever you want to archive to a location outside the repo.
 
+## Windows: long file paths
+
+Windows limits a full path to 260 characters (`MAX_PATH`) by default; Linux and macOS allow far longer paths. This has nothing to do with `\` versus `/` separators. Each clone lives several levels deep, and during a run the archive is built in a temporary stage directory next to the destination, for example:
+
+```text
+C:\Users\<you>\code\craft-app-archive\.craft-archive.stage.Ab12Cd\official-apps\ai-and-generative-media\artcraft-studio\source\
+```
+
+Files nested inside a repository can push the total past 260 characters, and Git for Windows then fails with `Filename too long`.
+
+The scripts pass `-c core.longpaths=true` to `git clone`, `fetch`, `checkout` and `status`, so Git itself handles long paths without changes to your global Git config. Other Windows programs (Explorer, archivers, some editors) may still struggle with the archived files unless long paths are enabled system-wide. On Windows 10 1607 or later, run this in an elevated PowerShell, then sign out and back in:
+
+```powershell
+New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" `
+  -Name LongPathsEnabled -Value 1 -PropertyType DWORD -Force
+```
+
+If you cannot change that setting, a short destination close to the drive root keeps paths well below the limit:
+
+```bash
+mise run archive --destination C:/ca
+```
+
 ## Opt out of verification
 
 By default, release signatures are checked. To disable them:
