@@ -29,6 +29,19 @@ Environment:
 EOF
 }
 
+# RFC 3339 time in the local zone (honours TZ), e.g. 2026-11-07T11:05:00+01:00.
+# One date call keeps time and offset consistent; %z works with GNU and BSD date,
+# while %:z is GNU-only, so the colon is inserted here. Falls back to UTC.
+timestamp() {
+  local now
+  now="$(date '+%Y-%m-%dT%H:%M:%S%z')"
+  if [[ "$now" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{4}$ ]]; then
+    printf '%s:%s\n' "${now:0:${#now}-2}" "${now: -2}"
+  else
+    date -u '+%Y-%m-%dT%H:%M:%SZ'
+  fi
+}
+
 clone_repo() {
   mkdir -p "$(dirname "$REPO_DIR")"
   if [ -d "$REPO_DIR/.git" ]; then
@@ -78,7 +91,9 @@ build_viewers() {
 }
 
 archive_wiki() {
+  build_started_at="$(timestamp)"
   build_wiki
+  built_at="$(timestamp)"
   build_viewers
 
   commit="$(git -C "$REPO_DIR" rev-parse HEAD)"
@@ -103,8 +118,8 @@ shallow = true
 build_tool = "npm"
 node_version = "$node_version"
 build_command = "npm ci && npm run build"
-build_started_at = "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-built_at = "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+build_started_at = "$build_started_at"
+built_at = "$built_at"
 lockfile_sha256 = "$npm_lock_sha"
 dist_sha256 = "$dist_sha"
 rendered_output = "static-site"
