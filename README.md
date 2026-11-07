@@ -9,7 +9,7 @@ This repository contains a reproducible archive workflow for all apps listed in 
 - shallow source clones
 - latest GitHub release assets
 - per-app `provenance.toml`
-- optional GPG signature verification
+- GPG signature verification by default (with explicit opt-outs)
 - output grouped by `OFFICIAL APPS` / `THIRD-PARTY APPS`
 
 The archive layout is:
@@ -37,7 +37,7 @@ craft-archive/
 - `bash`
 - `curl`
 - `jq`
-- `gpg` (required only when signature verification is enabled)
+- `gpg` (required by the default signature verification)
 
 ## Quick start
 
@@ -67,6 +67,8 @@ or:
 ```bash
 mise run archive --no-verify-signatures
 ```
+
+When verification is disabled, the archive task skips fetching the GPG key and does not check detached signatures. SHA-256 hashes are still calculated, and downloaded files are compared with `SHA256SUMS.txt` when the release provides it.
 
 ## Additional architecture and package formats
 
@@ -112,25 +114,25 @@ mise run archive --windows-arm64 --windows-x86
 
 ## Key fetch / verification
 
-The release verification is tied to a pinned GPG fingerprint:
+The release verification is pinned to a GPG fingerprint. To fetch and check the public key independently:
 
 ```bash
 mise run keys:fetch
 ```
 
-This fetches the public key for key ID `EC2AAF6D2213BF17`, verifies the full pinned fingerprint:
+The task looks up key ID `EC2AAF6D2213BF17` and requires this full fingerprint:
 
 ```text
 9F494AB282B2F20C80D16128EC2AAF6D2213BF17
 ```
 
-and writes the exported key to:
+The exported key is written to:
 
 ```text
 keys/storytold-release-key.asc
 ```
 
-Important: the short key ID is only a lookup hint. The trust anchor is the full fingerprint, which should be independently confirmed before treating it as trusted.
+The short key ID is only a lookup hint. The full fingerprint is the trust anchor and should be independently confirmed before treating it as trusted.
 
 ## Provenance format
 
