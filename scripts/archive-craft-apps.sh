@@ -6,17 +6,36 @@ MANIFEST="${CRAFT_APPS_MANIFEST:-apps.tsv}"
 API="https://api.github.com"
 DEPTH=20
 WANT_MACOS=true
-WANT_WINDOWS=true
-WANT_LINUX=true
+WANT_WINDOWS_X64=true
+WANT_WINDOWS_ARM64=false
+WANT_WINDOWS_X86=false
 VERIFY_SIGNATURES=false
 AUTH=()
 [[ -n "${GH_TOKEN:-}" ]] && AUTH=(-H "Authorization: Bearer $GH_TOKEN")
 
+# Selected assets are keyed by normalized target and package format.
+declare -A ASSET_SELECTION=()
+ASSET_SELECTION[linux-x86_64-deb]=true
+ASSET_SELECTION[linux-x86_64-appimage]=false
+ASSET_SELECTION[linux-x86_64-flatpak]=false
+ASSET_SELECTION[linux-x86_64-rpm]=false
+ASSET_SELECTION[linux-x86_64-tar-gz]=false
+ASSET_SELECTION[linux-x86_64-pkg-tar-zst]=false
+ASSET_SELECTION[linux-aarch64-deb]=false
+ASSET_SELECTION[linux-aarch64-appimage]=false
+ASSET_SELECTION[linux-aarch64-flatpak]=false
+ASSET_SELECTION[linux-aarch64-rpm]=false
+ASSET_SELECTION[linux-aarch64-tar-gz]=false
+ASSET_SELECTION[linux-aarch64-pkg-tar-zst]=false
+ASSET_SELECTION[linux-riscv64-deb]=false
+ASSET_SELECTION[linux-riscv64-rpm]=false
+ASSET_SELECTION[linux-riscv64-tar-gz]=false
+
 usage() {
   cat >&2 <<'EOF'
 Usage: archive-craft-apps.sh [--depth N] [--macos true|false]
-       [--windows-x64 true|false] [--linux-x86_64-deb true|false]
-       [--verify-signatures true|false]
+       [--windows-x64 true|false] [--windows-arm64 true|false] [--windows-x86 true|false]
+       [--asset linux-ARCH-FORMAT true|false] [--verify-signatures true|false]
 Environment: CRAFT_ARCHIVE_DIR, CRAFT_APPS_MANIFEST, GH_TOKEN,
              CRAFT_GPG_KEY_FILE, CRAFT_GPG_FINGERPRINT
 EOF
@@ -43,15 +62,20 @@ while (($#)); do
   case "$1" in
     --depth) DEPTH="${2:?--depth requires a value}"; shift 2 ;;
     --macos) WANT_MACOS="${2:?--macos requires true or false}"; shift 2 ;;
-    --windows-x64) WANT_WINDOWS="${2:?--windows-x64 requires true or false}"; shift 2 ;;
-    --linux-x86_64-deb) WANT_LINUX="${2:?--linux-x86_64-deb requires true or false}"; shift 2 ;;
+    --windows-x64) WANT_WINDOWS_X64="${2:?--windows-x64 requires true or false}"; shift 2 ;;
+    --windows-arm64) WANT_WINDOWS_ARM64="${2:?--windows-arm64 requires true or false}"; shift 2 ;;
+    --windows-x86) WANT_WINDOWS_X86="${2:?--windows-x86 requires true or false}"; shift 2 ;;
+    --asset)
+      key="${2:?--asset requires a target key}"; value="${3:?--asset requires true or false}"
+      [[ -v "ASSET_SELECTION[$key]" ]] || die "unbekanntes Asset-Ziel: $key"
+      ASSET_SELECTION[$key]="$value"; shift 3 ;;
     --verify-signatures) VERIFY_SIGNATURES="${2:?--verify-signatures requires true or false}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) usage; die "unrecognized argument: $1" ;;
   esac
 done
 [[ "$DEPTH" =~ ^[1-9][0-9]*$ ]] || die "depth muss eine positive ganze Zahl sein: $DEPTH"
-for value in "$WANT_MACOS" "$WANT_WINDOWS" "$WANT_LINUX" "$VERIFY_SIGNATURES"; do
+for value in "$WANT_MACOS" "$WANT_WINDOWS_X64" "$WANT_WINDOWS_ARM64" "$WANT_WINDOWS_X86" "$VERIFY_SIGNATURES" "${ASSET_SELECTION[@]}"; do
   [[ "$value" == true || "$value" == false ]] || die "boolean-Optionen müssen true oder false sein"
 done
 command -v git >/dev/null || die "git wird benötigt"
@@ -74,11 +98,18 @@ if [[ "$VERIFY_SIGNATURES" == true ]]; then
   [[ "$imported_fpr" == "$expected_fpr" ]] || die "der importierte GPG-Key-Fingerprint stimmt nicht mit CRAFT_GPG_FINGERPRINT überein"
 fi
 
+# Verify detached signatures only against the independently pinned fingerprint.
+verify_signature() {
+  local signature="$1" data="$2" status
+  status="$(gpg --batch --status-fd 1 --verify "$signature" "$data" 2>/dev/null || true)"
+  grep -q "^\[GNUPG:\] VALIDSIG $expected_fpr " <<<"$status" || die "GPG-Signatur ungültig oder nicht vom gepinnten Schlüssel: $data"
+}
+
 mkdir -p "$ROOT"
 while IFS=$'\t' read -r group category slug display repo; do
   [[ -z "${repo:-}" || "$group" == \#* ]] && continue
-  # Be tolerant of accidental whitespace in hand-edited manifests.
   category="${category# }"; category="${category% }"
+  slug="${slug# }"; slug="${slug% }"
   dest="$ROOT/$group"
   [[ -n "$category" ]] && dest="$dest/$category"
   dest="$dest/$slug"
@@ -119,8 +150,6 @@ while IFS=$'\t' read -r group category slug display repo; do
       git -C "$repo_dir" fetch --depth="$DEPTH" origin "$source_ref"
       git -C "$repo_dir" checkout --detach FETCH_HEAD
     fi
-  elif [[ "$ref_type" == tag ]]; then
-    git clone --depth "$DEPTH" --single-branch --branch "$source_ref" "$clone_url" "$repo_dir"
   else
     git clone --depth "$DEPTH" --single-branch --branch "$source_ref" "$clone_url" "$repo_dir"
   fi
@@ -144,7 +173,6 @@ while IFS=$'\t' read -r group category slug display repo; do
       url="$(asset_url "$regex")"
       name="$(asset_name "$regex")"
       if [[ -z "$url" && "$platform" == windows-x64 ]]; then
-        # ArtCraft currently publishes an x64 setup executable rather than a portable ZIP.
         url="$(asset_url 'x64-setup\.exe$|windows-x64.*\.exe$')"
         name="$(asset_name 'x64-setup\.exe$|windows-x64.*\.exe$')"
         portable=false
@@ -163,24 +191,32 @@ while IFS=$'\t' read -r group category slug display repo; do
       fi
       sig_url="$(asset_url "^${name//./\\.}\\.asc$")"
       sig_name="$(asset_name "^${name//./\\.}\\.asc$")"
-      if [[ -n "$sig_url" ]]; then
-        curl -fL --retry 3 "$sig_url" -o "$dest/$sig_name"
-      fi
-      if [[ "$VERIFY_SIGNATURES" == true && -n "$sig_url" ]]; then
-        verify_signature "$dest/$sig_name" "$file"
-      fi
+      if [[ -n "$sig_url" ]]; then curl -fL --retry 3 "$sig_url" -o "$dest/$sig_name"; fi
+      if [[ "$VERIFY_SIGNATURES" == true && -n "$sig_url" ]]; then verify_signature "$dest/$sig_name" "$file"; fi
       printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$platform" "$name" "$url" "$hash" "$portable" "${sig_url:-}" >> "$assets_file"
     }
 
-    verify_signature() {
-      local signature="$1" data="$2" status
-      status="$(gpg --batch --status-fd 1 --verify "$signature" "$data" 2>/dev/null || true)"
-      grep -q "^\[GNUPG:\] VALIDSIG $expected_fpr " <<<"$status" || die "GPG-Signatur ungültig oder nicht vom gepinnten Schlüssel: $data"
-    }
-
     [[ "$WANT_MACOS" == true ]] && download_asset macos 'universal.*\.dmg$|macos.*\.dmg$' false
-    [[ "$WANT_WINDOWS" == true ]] && download_asset windows-x64 'windows-x64-portable\.zip$' true
-    [[ "$WANT_LINUX" == true ]] && download_asset linux-x86_64-deb 'linux-x86_64\.deb$' false
+    [[ "$WANT_WINDOWS_X64" == true ]] && download_asset windows-x64 'windows-x64-portable\.zip$' true
+    [[ "$WANT_WINDOWS_ARM64" == true ]] && download_asset windows-arm64 'windows-arm64-portable\.zip$' true
+    [[ "$WANT_WINDOWS_X86" == true ]] && download_asset windows-x86 'windows-x86-portable\.zip$' true
+
+    for key in "${!ASSET_SELECTION[@]}"; do
+      [[ "${ASSET_SELECTION[$key]}" == true ]] || continue
+      arch="${key#linux-}"
+      arch="${arch%%-*}"
+      format="${key#linux-$arch-}"
+      case "$format" in
+        deb) suffix="linux-$arch\\.deb$" ;;
+        appimage) suffix="linux-$arch\\.AppImage$" ;;
+        flatpak) suffix="linux-$arch\\.flatpak$" ;;
+        rpm) suffix="linux-$arch\\.rpm$" ;;
+        tar-gz) suffix="linux-$arch\\.tar\\.gz$" ;;
+        pkg-tar-zst) suffix="linux-$arch\\.pkg\\.tar\\.zst$" ;;
+        *) die "interner Fehler: unbekanntes Paketformat $format" ;;
+      esac
+      download_asset "$key" "$suffix" false
+    done
 
     if [[ "$VERIFY_SIGNATURES" == true ]]; then
       checksums_sig_url="$(asset_url '^SHA256SUMS\.txt\.asc$')"

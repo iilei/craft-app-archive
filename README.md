@@ -25,7 +25,7 @@ Each app folder contains `source/` (shallow Git clone), the selected release fil
 - A GitHub API token is optional but recommended for reliable API rate limits: set `GH_TOKEN`.
 - `gpg` is only required for optional signature verification.
 
-`mise install` installs the pinned `jq` parser. Other commands are provided by the host shell. `mise` task `usage` flags are used to parse arguments (no separate CLI parser dependency).
+`mise install` installs the pinned `jq` parser. Other commands are provided by the host shell. `mise` task `usage` flags parse task arguments.
 
 ## Run
 
@@ -34,21 +34,47 @@ mise install
 mise run archive
 ```
 
-Defaults: clone depth `20`; download the macOS universal DMG, Windows x64 package, and Linux x86_64 `.deb` for each latest stable GitHub release. The archive is saved to `craft-archive/` unless `CRAFT_ARCHIVE_DIR` is set.
+Defaults are unchanged: clone depth `20`; download the macOS universal DMG, Windows x64 portable package, and Linux x86_64 `.deb` for each latest stable GitHub release. All additional package formats and architectures are opt-in. The archive is saved to `craft-archive/` unless `CRAFT_ARCHIVE_DIR` is set.
+
+### Linux package-format and architecture options
+
+Linux formats can be selected independently by architecture. Each option defaults to `false` except the existing `--linux-x86_64-deb`, which remains `true`:
+
+| Architecture | Available format flags |
+|---|---|
+| x86_64 | `--linux-x86_64-deb`, `--linux-x86_64-appimage`, `--linux-x86_64-flatpak`, `--linux-x86_64-rpm`, `--linux-x86_64-tar-gz`, `--linux-x86_64-pkg-tar-zst` |
+| aarch64 / ARM64 | `--linux-aarch64-deb`, `--linux-aarch64-appimage`, `--linux-aarch64-flatpak`, `--linux-aarch64-rpm`, `--linux-aarch64-tar-gz`, `--linux-aarch64-pkg-tar-zst` |
+| riscv64 | `--linux-riscv64-deb`, `--linux-riscv64-rpm`, `--linux-riscv64-tar-gz` |
+
+Select multiple formats and architectures in one run. For example:
 
 ```sh
-# Change clone depth; defaults for platforms remain enabled.
-mise run archive --depth 5
-
-# Disable platform downloads individually. The corresponding source clone and provenance are still created.
-mise run archive --no-macos
-mise run archive --no-windows-x64 --no-linux-x86_64-deb
-
-# Choose a custom destination and authenticate GitHub API requests.
-CRAFT_ARCHIVE_DIR=/mnt/backup/craft GH_TOKEN="$GH_TOKEN" mise run archive
+mise run archive --linux-x86_64-appimage --linux-x86_64-rpm --linux-aarch64-deb
 ```
 
-The platform booleans default to `true`, and `--no-<flag>` disables a platform. ArtCraft Studio currently has no Windows portable ZIP in its latest release; the task falls back to its x64 setup executable and records `portable = false`. macOS DMGs are installer images, not unpacked app bundles. Availability varies by release; missing platform assets are warned about and skipped.
+Use the negated form to switch off an enabled default, for example `--no-linux-x86_64-deb`. Release assets are checked per repository; an unavailable requested format is warned about and skipped.
+
+### Other architecture options
+
+Windows x64 remains enabled by default. Windows ARM64 and x86 can be added explicitly:
+
+```sh
+mise run archive --windows-arm64 --windows-x86
+```
+
+The macOS DMG is published as universal by these projects; there are no separate Intel/Apple-Silicon asset flags. ArtCraft Studio currently has no Windows portable ZIP in its latest release; the task falls back to its x64 setup executable and records `portable = false`.
+
+Change clone depth without changing asset defaults:
+
+```sh
+mise run archive --depth 5
+```
+
+Choose a custom destination and authenticate GitHub API requests:
+
+```sh
+CRAFT_ARCHIVE_DIR=/mnt/backup/craft GH_TOKEN="$GH_TOKEN" mise run archive
+```
 
 ## Signature verification
 
