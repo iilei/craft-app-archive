@@ -7,7 +7,7 @@
 ```text
 craft-wiki/
 ├── source/             # shallow clone of storytold/craft-wiki
-├── dist/               # Astro static output
+├── documentation/      # the rendered wiki (Astro static output)
 ├── launchers/          # viewer binaries, grouped by GOOS-GOARCH
 ├── start.cmd           # Windows: double-click to open the wiki
 ├── start.command       # macOS: double-click to open the wiki
@@ -16,7 +16,7 @@ craft-wiki/
 └── README.txt          # how to open the archive, for whoever receives it
 ```
 
-The `craft-wiki/` folder is self-contained and relocatable: move or copy it anywhere (another disk, a USB stick, another machine) and it keeps working. Nothing records an absolute path, and the start scripts and the viewer resolve `dist/` from their own location.
+The `craft-wiki/` folder is self-contained and relocatable: move or copy it anywhere (another disk, a USB stick, another machine) and it keeps working. Nothing records an absolute path, and the start scripts and the viewer resolve `documentation/` from their own location.
 
 The local copy is a static, read-only view. Cloudflare Worker routes for authentication and the CMS API are not available locally.
 
@@ -64,10 +64,10 @@ The binaries can also be run directly, for example:
 
 `mise run wiki:launch` prints the command for the current machine.
 
-The viewer locates the `dist/` directory next to `launchers/` automatically, binds only to `127.0.0.1`, and opens the default browser. It defaults to port `42420`; if that port is occupied, use `--port 0` to let the OS allocate an available port. A fixed alternate port can be passed explicitly:
+The viewer locates the `documentation/` directory next to `launchers/` automatically, binds only to `127.0.0.1`, and opens the default browser. It defaults to port `42420`; if that port is occupied, use `--port 0` to let the OS allocate an available port. A fixed alternate port can be passed explicitly:
 
 ```sh
-./craft-wiki-viewer --root ./dist --port 42421 --no-open
+./craft-wiki-viewer --root ./documentation --port 42421 --no-open
 ```
 
 Supported options:
@@ -79,6 +79,6 @@ Supported options:
 
 ## Provenance
 
-`provenance.toml` records the checked-out ref and commit, shallow clone depth, Node version, npm lockfile hash, build timestamps (local time with UTC offset), deterministic rendered-tree hash, and each target binary's path (relative to the archive folder) and SHA-256. The viewer binary itself does not contain the static site; keep `dist/` next to `launchers/` when distributing the archive.
+`provenance.toml` records the checked-out ref and commit, shallow clone depth, Node version, npm lockfile hash, build timestamps (local time with UTC offset), deterministic rendered-tree hash, and each target binary's path (relative to the archive folder) and SHA-256. The viewer binary itself does not contain the static site; keep `documentation/` next to `launchers/` when distributing the archive.
 
 On macOS, Gatekeeper may block the unsigned viewer and start script after a download. Allow them under System Settings > Privacy & Security, or run `xattr -dr com.apple.quarantine .` in the `craft-wiki/` folder.

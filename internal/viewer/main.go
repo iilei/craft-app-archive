@@ -14,7 +14,7 @@ import (
 )
 
 func main() {
-	root := flag.String("root", "", "path to static website root (default: dist/ next to launchers/)")
+	root := flag.String("root", "", "path to static website root (default: documentation/ next to launchers/)")
 	host := flag.String("host", "127.0.0.1", "bind host: 127.0.0.1 or localhost")
 	port := flag.Int("port", 42420, "local port to serve on, 0-65535 (0 picks a free port)")
 	noOpen := flag.Bool("no-open", false, "do not open browser automatically")
@@ -62,8 +62,9 @@ func main() {
 	}
 }
 
-// findSiteRoot looks for dist/ relative to the executable, which normally
-// lives at <archive>/launchers/<target>/, then falls back to ./dist.
+// findSiteRoot looks for documentation/ relative to the executable, which
+// normally lives at <archive>/launchers/<target>/, then falls back to
+// ./documentation.
 func findSiteRoot() (string, error) {
 	var candidates []string
 	if exe, err := os.Executable(); err == nil {
@@ -72,17 +73,17 @@ func findSiteRoot() (string, error) {
 		}
 		dir := filepath.Dir(exe)
 		candidates = append(candidates,
-			filepath.Join(dir, "..", "..", "dist"),
-			filepath.Join(dir, "dist"),
+			filepath.Join(dir, "..", "..", "documentation"),
+			filepath.Join(dir, "documentation"),
 		)
 	}
-	candidates = append(candidates, "dist")
+	candidates = append(candidates, "documentation")
 	for _, c := range candidates {
 		if info, err := os.Stat(c); err == nil && info.IsDir() {
 			return c, nil
 		}
 	}
-	return "", fmt.Errorf("no dist/ directory found (looked in %v); pass --root", candidates)
+	return "", fmt.Errorf("no documentation/ directory found (looked in %v); pass --root", candidates)
 }
 
 func openBrowser(url string) {
