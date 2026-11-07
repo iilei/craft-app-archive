@@ -17,6 +17,7 @@ The archive layout is:
 ```text
 craft-archive/
 ├── apps.txt              # copy of the app list this archive was built from
+├── UPDATE.txt            # how to refresh this archive, also for someone it was handed to
 ├── official-apps/
 │   ├── graphics-and-design/
 │   │   └── photocraft/
@@ -254,6 +255,7 @@ Each asset's `verification` records the strongest check the archive run performe
 The workflow is intentionally data-driven:
 
 - repo list is in `apps.txt`, and a copy is stored at the archive root when a run completes
+- `UPDATE.txt` at the archive root holds the exact `mise run archive` command (with this run's options) that refreshes it, the tooling commit used, and, for anyone the archive is handed to, where to get this repository and mise
 - release selection is runtime-based
 - exact commit and tag are persisted in `provenance.toml`
 - release assets and checksums are stored next to the clone
