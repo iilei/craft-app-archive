@@ -2,6 +2,9 @@
 # jq parses GitHub release metadata; git/curl/bash/gpg are expected from the host
 # (Git Bash on Windows, or the usual Linux command-line tools).
 jq = "1.8.1"
+# Wiki archive: Node matches storytold/craft-wiki's .nvmrc (22); Go builds the viewer.
+node = "22.23.4"
+go = "1.25.14"
 
 [tasks."keys:fetch"]
 description = "Fetch the pinned Craft release signing key and verify its full fingerprint"
@@ -16,6 +19,28 @@ jq -Rrs -f scripts/format-apps.jq apps.txt > apps.txt.tmp && mv apps.txt.tmp app
 [tasks."apps:check"]
 description = "Fail if apps.txt is not formatted (run mise run apps:fmt to fix)"
 run = "jq -Rrs -f scripts/format-apps.jq apps.txt | diff -u apps.txt -"
+
+[tasks."wiki:build"]
+description = "Clone storytold/craft-wiki and build its static site into the archive"
+run = "bash scripts/archive-wiki.sh build"
+
+[tasks."wiki:launcher:build"]
+description = "Cross-compile the local wiki viewer for the selected targets"
+usage = '''
+flag "--targets <targets>" help="Comma-separated targets (default: all): windows-amd64,windows-arm64,darwin-amd64,darwin-arm64,linux-amd64,linux-arm64"
+'''
+run = 'bash scripts/archive-wiki.sh launcher ${usage_targets:+--targets "$usage_targets"}'
+
+[tasks."wiki:archive"]
+description = "Build the wiki and viewers, then write provenance.toml and README.txt"
+usage = '''
+flag "--targets <targets>" help="Comma-separated viewer targets (default: all)"
+'''
+run = 'bash scripts/archive-wiki.sh archive ${usage_targets:+--targets "$usage_targets"}'
+
+[tasks."wiki:launch"]
+description = "Print the viewer command for this machine"
+run = "bash scripts/archive-wiki.sh launch"
 
 [tasks.archive]
 description = "Shallow-clone Craft Apps and archive latest release installers with provenance"
