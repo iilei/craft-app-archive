@@ -22,25 +22,33 @@ run = "jq -Rrs -f scripts/format-apps.jq apps.txt | diff -u apps.txt -"
 
 [tasks."wiki:build"]
 description = "Clone storytold/craft-wiki and build its static site into the archive"
-run = "bash scripts/archive-wiki.sh build"
+usage = '''
+flag "--destination <path>" help="Wiki archive directory (default: craft-wiki; relative paths resolve from this repository)"
+'''
+run = 'bash scripts/archive-wiki.sh build ${usage_destination:+--destination "$usage_destination"}'
 
 [tasks."wiki:launcher:build"]
 description = "Cross-compile the local wiki viewer for the selected targets"
 usage = '''
 flag "--targets <targets>" help="Comma-separated targets (default: all): windows-amd64,windows-arm64,darwin-amd64,darwin-arm64,linux-amd64,linux-arm64"
+flag "--destination <path>" help="Wiki archive directory (default: craft-wiki; relative paths resolve from this repository)"
 '''
-run = 'bash scripts/archive-wiki.sh launcher ${usage_targets:+--targets "$usage_targets"}'
+run = 'bash scripts/archive-wiki.sh launcher ${usage_destination:+--destination "$usage_destination"} ${usage_targets:+--targets "$usage_targets"}'
 
 [tasks."wiki:archive"]
 description = "Build the wiki and viewers, then write provenance.toml and README.txt"
 usage = '''
 flag "--targets <targets>" help="Comma-separated viewer targets (default: all)"
+flag "--destination <path>" help="Wiki archive directory (default: craft-wiki; relative paths resolve from this repository)"
 '''
-run = 'bash scripts/archive-wiki.sh archive ${usage_targets:+--targets "$usage_targets"}'
+run = 'bash scripts/archive-wiki.sh archive ${usage_destination:+--destination "$usage_destination"} ${usage_targets:+--targets "$usage_targets"}'
 
 [tasks."wiki:launch"]
 description = "Print the viewer command for this machine"
-run = "bash scripts/archive-wiki.sh launch"
+usage = '''
+flag "--destination <path>" help="Wiki archive directory (default: craft-wiki; relative paths resolve from this repository)"
+'''
+run = 'bash scripts/archive-wiki.sh launch ${usage_destination:+--destination "$usage_destination"}'
 
 [tasks.archive]
 description = "Shallow-clone Craft Apps and archive latest release installers with provenance"

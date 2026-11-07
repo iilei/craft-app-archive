@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="${CRAFT_WIKI_ARCHIVE_ROOT:-$(pwd)/craft-archive/documentation/craft-wiki}"
-REPO_DIR="${CRAFT_WIKI_REPO_DIR:-$ROOT/source}"
-DIST_DIR="${CRAFT_WIKI_DIST_DIR:-$ROOT/dist}"
+# Outside the app archive's default craft-archive/, which `mise run archive
+# --overwrite` replaces as a whole. REPO_DIR and DIST_DIR follow after options.
+ROOT="${CRAFT_WIKI_ARCHIVE_ROOT:-$(pwd)/craft-wiki}"
 VIEWER_SRC="${CRAFT_WIKI_VIEWER_SRC:-$(pwd)/internal/viewer}"
 HOST="${CRAFT_WIKI_HOST:-127.0.0.1}"
 PORT="${CRAFT_WIKI_PORT:-42420}"
@@ -12,7 +12,7 @@ ALL_TARGETS=(windows-amd64 windows-arm64 darwin-amd64 darwin-arm64 linux-amd64 l
 
 usage() {
   cat >&2 <<'EOF'
-Usage: archive-wiki.sh <clone|build|launcher|archive|launch> [--targets LIST]
+Usage: archive-wiki.sh <clone|build|launcher|archive|launch> [--destination PATH] [--targets LIST]
 
 Actions:
   clone     Clone the Craft Wiki source repository.
@@ -22,12 +22,13 @@ Actions:
   launch    Print the exact host-specific launch command.
 
 Options:
+  --destination PATH  Wiki archive directory (default: ./craft-wiki)
   --targets LIST  Comma-separated viewer targets for launcher/archive (default: all):
                   windows-amd64, windows-arm64, darwin-amd64, darwin-arm64,
                   linux-amd64, linux-arm64
 
 Environment:
-  CRAFT_WIKI_ARCHIVE_ROOT     Destination root for the wiki archive (default: ./craft-archive/documentation/craft-wiki)
+  CRAFT_WIKI_ARCHIVE_ROOT     Same as --destination (the option takes precedence)
   CRAFT_WIKI_REPO_DIR         Source clone directory (default: <archive_root>/source)
   CRAFT_WIKI_DIST_DIR         Static site output directory (default: <archive_root>/dist)
   CRAFT_WIKI_VIEWER_SRC       Go viewer source directory (default: ./internal/viewer)
@@ -273,9 +274,13 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --targets) TARGETS="${2:?--targets requires a comma-separated list}"; shift 2 ;;
     --targets=*) TARGETS="${1#*=}"; shift ;;
+    --destination) ROOT="${2:?--destination requires a path}"; shift 2 ;;
+    --destination=*) ROOT="${1#*=}"; [ -n "$ROOT" ] || die "--destination requires a path"; shift ;;
     *) usage; die "unrecognized argument: $1" ;;
   esac
 done
+REPO_DIR="${CRAFT_WIKI_REPO_DIR:-$ROOT/source}"
+DIST_DIR="${CRAFT_WIKI_DIST_DIR:-$ROOT/dist}"
 
 case "$action" in
   clone)
