@@ -122,12 +122,15 @@ clone_repo() {
   else
     retry "git clone craft-wiki" clone_fresh
   fi
+  # The reflog records the local git user's name and email; keep it out of the archive.
+  git -C "$REPO_DIR" config --replace-all core.logAllRefUpdates false
+  rm -rf -- "$REPO_DIR/.git/logs"
 }
 
 # A failed clone can leave a partial directory behind; start each attempt clean.
 clone_fresh() {
   rm -rf -- "$REPO_DIR"
-  git clone -c core.longpaths=true --depth 20 --branch main https://github.com/storytold/craft-wiki.git "$REPO_DIR"
+  git clone -c core.longpaths=true -c core.logAllRefUpdates=false --depth 20 --branch main https://github.com/storytold/craft-wiki.git "$REPO_DIR"
 }
 
 # npm ci downloads packages (and starts from a clean node_modules each time).
