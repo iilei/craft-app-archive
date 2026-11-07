@@ -69,11 +69,33 @@ if [[ "$verify_signatures" != true ]]; then
 fi
 quoted_options="$( ((${#options[@]})) && printf ' %q' "${options[@]}" || true)"
 
-command="mise -C $(printf '%q' "$repo_dir") run archive --destination $(printf '%q' "$destination") --overwrite$quoted_options"
+# Shell-quote a path for the notes, writing the home directory as $HOME so the
+# file carries no local user name. Paths are physical (pwd -P), so the home
+# directory is matched both as given and with symlinks resolved.
+home_physical="$(cd "${HOME:-/nonexistent}" 2>/dev/null && pwd -P || true)"
+shell_path() {
+  local path="$1" home rest
+  for home in "${HOME:-}" "$home_physical"; do
+    [[ -n "$home" && "$home" != / ]] || continue
+    if [[ "$path" == "$home" || "$path" == "$home"/* ]]; then
+      rest="${path#"$home"}"
+      [[ -n "$rest" ]] && rest="$(printf '%q' "$rest")"
+      if [[ "$(printf '%q' "$HOME")" == "$HOME" ]]; then
+        printf '$HOME%s' "$rest"
+      else
+        printf '"$HOME"%s' "$rest"
+      fi
+      return
+    fi
+  done
+  printf '%q' "$path"
+}
+
+command="mise -C $(shell_path "$repo_dir") run archive --destination $(shell_path "$destination") --overwrite$quoted_options"
 # A custom app list is passed by environment, so it has to be part of the command.
 if [[ -n "${CRAFT_APPS_MANIFEST:-}" ]]; then
   manifest="$(cd "$(dirname "$CRAFT_APPS_MANIFEST")" && pwd -P)/$(basename "$CRAFT_APPS_MANIFEST")"
-  command="CRAFT_APPS_MANIFEST=$(printf '%q' "$manifest") $command"
+  command="CRAFT_APPS_MANIFEST=$(shell_path "$manifest") $command"
 fi
 
 commit="unknown" dirty=""
@@ -147,7 +169,7 @@ Tooling used for this archive
 To reproduce the archive with the same tooling instead of the latest, check
 out that commit before running the update:
 
-  git -C $(printf '%q' "$repo_dir") checkout $commit
+  git -C $(shell_path "$repo_dir") checkout $commit
 
 Per-app details (release, source commit, checksums, verification method) are
 in each app's provenance.toml. If present, craft-wiki/ holds an offline copy of
