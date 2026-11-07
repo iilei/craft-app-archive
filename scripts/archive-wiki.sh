@@ -16,7 +16,7 @@ Usage: archive-wiki.sh <clone|build|launcher|archive|launch> [--destination PATH
 
 Actions:
   clone     Clone the Craft Wiki source repository.
-  build     Build the static site to the archive dist directory.
+  build     Build the static site into the archive documentation directory.
   launcher  Cross-compile the local viewer binaries for common targets.
   archive   Build and package the wiki archive with provenance.
   launch    Print the exact host-specific launch command.
@@ -30,7 +30,7 @@ Options:
 Environment:
   CRAFT_WIKI_ARCHIVE_ROOT     Same as --destination (the option takes precedence)
   CRAFT_WIKI_REPO_DIR         Source clone directory (default: <archive_root>/source)
-  CRAFT_WIKI_DIST_DIR         Static site output directory (default: <archive_root>/dist)
+  CRAFT_WIKI_DIST_DIR         Static site output directory (default: <archive_root>/documentation)
   CRAFT_WIKI_VIEWER_SRC       Go viewer source directory (default: ./internal/viewer)
   CRAFT_WIKI_HOST             Host to bind (default: 127.0.0.1)
   CRAFT_WIKI_PORT             Default viewer port (default: 42420)
@@ -102,6 +102,10 @@ build_wiki() {
   clone_repo
   (cd "$REPO_DIR" && npm ci && npm run build)
   rm -rf "$DIST_DIR"
+  # Archives built before the rename kept the site in dist/; drop that stale copy.
+  if [ "$DIST_DIR" != "$ROOT/dist" ] && [ -d "$ROOT/dist" ] && [ -f "$ROOT/provenance.toml" ]; then
+    rm -rf "$ROOT/dist"
+  fi
   mkdir -p "$(dirname "$DIST_DIR")"
   cp -R "$REPO_DIR/dist" "$DIST_DIR"
 }
@@ -161,7 +165,7 @@ archive_wiki() {
   branch="$(git -C "$REPO_DIR" symbolic-ref --short HEAD)"
   node_version="$(node --version 2>/dev/null || echo unknown)"
   npm_lock_sha="$(sha256 "$REPO_DIR/package-lock.json")"
-  [ -n "$(find "$DIST_DIR" -type f -print -quit)" ] || die "no files in dist directory: $DIST_DIR"
+  [ -n "$(find "$DIST_DIR" -type f -print -quit)" ] || die "no files in documentation directory: $DIST_DIR"
   dist_sha="$(tree_sha256 "$DIST_DIR")"
 
   cat > "$ROOT/provenance.toml" <<EOF
@@ -225,8 +229,8 @@ EOF
     done
     cat <<'EOF'
 
-The viewer serves dist/ on http://127.0.0.1:42420 (loopback only) and opens
-your browser. Options, passed to the start scripts or the viewer directly:
+The viewer serves the wiki from documentation/ on http://127.0.0.1:42420
+(loopback only) and opens your browser. Options, passed to the start scripts or the viewer directly:
 
   --port <n>   port 0-65535; use --port 0 if 42420 is taken
   --root <dir> site directory (found automatically next to launchers/)
@@ -234,7 +238,8 @@ your browser. Options, passed to the start scripts or the viewer directly:
   --no-open    do not open the browser
 
 This is a static, read-only copy: sign-in and the CMS of the live site do
-not work offline. Keep dist/ next to launchers/ when copying the archive.
+not work offline. Keep documentation/ next to launchers/ when copying the
+archive.
 
 On macOS, a downloaded archive may be blocked as unsigned; allow it under
 System Settings > Privacy & Security, or run in this folder:
@@ -247,7 +252,7 @@ EOF
 }
 
 launch_help() {
-  [ -d "$DIST_DIR" ] || die "missing dist directory: $DIST_DIR"
+  [ -d "$DIST_DIR" ] || die "missing documentation directory: $DIST_DIR"
   local goos goarch binary
   case "$(uname -s)" in
     Linux) goos=linux ;;
@@ -280,7 +285,7 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 REPO_DIR="${CRAFT_WIKI_REPO_DIR:-$ROOT/source}"
-DIST_DIR="${CRAFT_WIKI_DIST_DIR:-$ROOT/dist}"
+DIST_DIR="${CRAFT_WIKI_DIST_DIR:-$ROOT/documentation}"
 
 case "$action" in
   clone)

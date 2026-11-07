@@ -12,5 +12,5 @@ if not exist "%VIEWER%" (
   pause
   exit /b 1
 )
-"%VIEWER%" --root "%~dp0dist" %*
+"%VIEWER%" --root "%~dp0documentation" %*
 if errorlevel 1 pause

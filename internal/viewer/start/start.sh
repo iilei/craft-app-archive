@@ -12,4 +12,4 @@ if [ ! -f "$viewer" ]; then
   echo "No viewer for linux-$arch in this archive: $viewer" >&2
   exit 1
 fi
-exec "$viewer" --root "$dir/dist" "$@"
+exec "$viewer" --root "$dir/documentation" "$@"
