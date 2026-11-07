@@ -395,6 +395,10 @@ while IFS=$'\x1f' read -r group category slug display repo; do
   rm -f "$assets_file"
 done < <(sed -E $'s/^[[:space:]]+|[[:space:]]+$//g; s/\t| {2,}/\x1f/g' "$MANIFEST")
 
+# Keep the app list next to the per-app provenance, so the archive records which
+# apps it was built from. Copied before the swap so it lands with the archive.
+cp -- "$MANIFEST" "$ROOT/apps.txt"
+
 if [[ -n "$TEMP_ROOT" ]]; then
   rm -rf -- "$TARGET_ROOT"
   mv -- "$TEMP_ROOT" "$TARGET_ROOT"
