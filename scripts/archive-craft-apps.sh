@@ -73,6 +73,18 @@ sha256() {
     die "sha256sum or shasum is required"
   fi
 }
+# RFC 3339 time in the local zone (honours TZ), e.g. 2026-11-07T11:05:00+01:00.
+# One date call keeps time and offset consistent; %z works with GNU and BSD date,
+# while %:z is GNU-only, so the colon is inserted here. Falls back to UTC.
+timestamp() {
+  local now
+  now="$(date '+%Y-%m-%dT%H:%M:%S%z')"
+  if [[ "$now" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{4}$ ]]; then
+    printf '%s:%s\n' "${now:0:${#now}-2}" "${now: -2}"
+  else
+    date -u '+%Y-%m-%dT%H:%M:%SZ'
+  fi
+}
 fetch_json() {
   curl -fsSL --retry 3 "${AUTH[@]}" -H 'Accept: application/vnd.github+json' "$1"
 }
@@ -366,7 +378,7 @@ while IFS=$'\x1f' read -r group category slug display repo; do
     printf 'checksums_file = %s\n' "$(q "$checksums_name")"
     printf 'checksums_sha256 = %s\n' "$(q "$checksums_sha256")"
     printf 'signature_verification_requested = %s\n' "$VERIFY_SIGNATURES"
-    printf 'archived_at = %s\n\n' "$(q "$(date -u '+%Y-%m-%dT%H:%M:%SZ')")"
+    printf 'archived_at = %s\n\n' "$(q "$(timestamp)")"
     while IFS=$'\t' read -r platform name url hash portable verification sig_url; do
       [[ -n "$platform" ]] || continue
       printf '[[assets]]\n'
