@@ -242,16 +242,16 @@ while IFS=$'\t' read -r group category slug display repo; do
 
   clone_url="https://github.com/$repo.git"
   if [[ -d "$repo_dir/.git" ]]; then
-    [[ -z "$(git -C "$repo_dir" status --porcelain)" ]] || die "lokale Änderungen im Clone verhindern Update: $repo_dir"
+    [[ -z "$(git -c core.longpaths=true -C "$repo_dir" status --porcelain)" ]] || die "lokale Änderungen im Clone verhindern Update: $repo_dir"
     if [[ "$ref_type" == tag ]]; then
-      git -C "$repo_dir" fetch --depth="$DEPTH" --force origin "refs/tags/$source_ref:refs/tags/$source_ref"
-      git -C "$repo_dir" checkout --detach "$source_ref"
+      git -c core.longpaths=true -C "$repo_dir" fetch --depth="$DEPTH" --force origin "refs/tags/$source_ref:refs/tags/$source_ref"
+      git -c core.longpaths=true -C "$repo_dir" checkout --detach "$source_ref"
     else
-      git -C "$repo_dir" fetch --depth="$DEPTH" origin "$source_ref"
-      git -C "$repo_dir" checkout --detach FETCH_HEAD
+      git -c core.longpaths=true -C "$repo_dir" fetch --depth="$DEPTH" origin "$source_ref"
+      git -c core.longpaths=true -C "$repo_dir" checkout --detach FETCH_HEAD
     fi
   else
-    git clone --depth "$DEPTH" --single-branch --branch "$source_ref" "$clone_url" "$repo_dir"
+    git clone -c core.longpaths=true --depth "$DEPTH" --single-branch --branch "$source_ref" "$clone_url" "$repo_dir"
   fi
   commit="$(git -C "$repo_dir" rev-parse HEAD)"
 

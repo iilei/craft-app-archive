@@ -32,10 +32,10 @@ EOF
 clone_repo() {
   mkdir -p "$(dirname "$REPO_DIR")"
   if [ -d "$REPO_DIR/.git" ]; then
-    git -C "$REPO_DIR" fetch --depth 20 --tags origin
-    git -C "$REPO_DIR" checkout main
+    git -c core.longpaths=true -C "$REPO_DIR" fetch --depth 20 --tags origin
+    git -c core.longpaths=true -C "$REPO_DIR" checkout main
   else
-    git clone --depth 20 --branch main https://github.com/storytold/craft-wiki.git "$REPO_DIR"
+    git clone -c core.longpaths=true --depth 20 --branch main https://github.com/storytold/craft-wiki.git "$REPO_DIR"
   fi
 }
 
