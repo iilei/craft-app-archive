@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Trust is anchored to this independently verified full fingerprint, not to
-# the GitHub release URL or the short key ID.
+# Trust is anchored to the published release key and its full fingerprint.
+# We do not query a keyserver; the official release asset is the source of truth.
 readonly EXPECTED_FINGERPRINT="9F494AB282B2F20C80D16128EC2AAF6D2213BF17"
 readonly KEY_URL="https://github.com/storytold/artcraft/releases/latest/download/release-signing-key.asc"
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
