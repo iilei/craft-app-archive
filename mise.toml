@@ -34,23 +34,50 @@ flag "--linux-riscv64-tar-gz" default="false" help="Download Linux RISC-V 64-bit
 flag "--overwrite" default="false" help="Replace an existing archive directory"
 flag "--verify-signatures" default="true" help="Verify available release signatures (disable with --no-verify-signatures or NO_VERIFY_SIGNATURE=1)"
 '''
-# NO_VERIFY_SIGNATURE is an environment-level opt-out and takes precedence over
-# the usage flag. Avoid fetching the GPG key when verification is disabled.
 shell = "bash -c"
 run = '''
-set -eu
-verify_signatures="$usage_verify_signatures"
-archive_args=(--depth "$usage_depth")
-archive_args+=(--destination "$usage_destination")
-if [[ "$usage_overwrite" == true ]]; then
-  archive_args+=(--overwrite)
+set -euo pipefail
+
+requested_destination="$usage_destination"
+target_parent="$(dirname "$requested_destination")"
+target_name="$(basename "$requested_destination")"
+[[ -n "$target_name" && "$target_name" != / && "$target_name" != . && "$target_name" != .. ]] || {
+  echo "Invalid archive destination: $requested_destination" >&2
+  exit 1
+}
+mkdir -p "$target_parent"
+target_parent="$(cd "$target_parent" && pwd -P)"
+target="$target_parent/$target_name"
+if [[ -e "$target" || -L "$target" ]]; then
+  if [[ "$usage_overwrite" != true ]]; then
+    echo "Destination exists: $target (pass --overwrite to replace it)" >&2
+    exit 1
+  fi
 fi
+
+verify_signatures="$usage_verify_signatures"
 case "${NO_VERIFY_SIGNATURE:-}" in
   1|true|yes|on|TRUE|YES|ON) verify_signatures=false ;;
 esac
 if [[ "$verify_signatures" == true ]]; then
   bash scripts/fetch-release-key.sh
 fi
+
+stage="$(mktemp -d "$target_parent/.$target_name.stage.XXXXXX")"
+backup=""
+cleanup() {
+  status=$?
+  if [[ -n "$backup" && -e "$backup" && ! -e "$target" && ! -L "$target" ]]; then
+    mv "$backup" "$target" || echo "WARNING: could not restore previous archive from $backup" >&2
+  fi
+  if [[ -n "$stage" && -e "$stage" ]]; then
+    rm -rf -- "$stage"
+  fi
+  return "$status"
+}
+trap cleanup EXIT
+
+archive_args=(--depth "$usage_depth" --destination "$stage" --overwrite)
 if [[ "$usage_macos" != true ]]; then
   archive_args+=(--macos false)
 fi
@@ -66,5 +93,28 @@ fi
 if [[ "$usage_verify_signatures" != true ]]; then
   archive_args+=(--verify-signatures false)
 fi
-CRAFT_GPG_KEY_FILE="$(pwd)/keys/storytold-release-key.asc" CRAFT_GPG_FINGERPRINT="2B76741B414AAD6CD33E631213A005C0B9D7C3ED" bash scripts/archive-craft-apps.sh "${archive_args[@]}"
+
+CRAFT_GPG_KEY_FILE="$(pwd)/keys/storytold-release-key.asc" \
+CRAFT_GPG_FINGERPRINT="2B76741B414AAD6CD33E631213A005C0B9D7C3ED" \
+bash scripts/archive-craft-apps.sh "${archive_args[@]}"
+
+if [[ -e "$target" || -L "$target" ]]; then
+  backup="$(mktemp -d "$target_parent/.$target_name.backup.XXXXXX")"
+  rmdir "$backup"
+  mv "$target" "$backup"
+  if ! mv "$stage" "$target"; then
+    mv "$backup" "$target"
+    backup=""
+    echo "Could not install completed archive; restored previous destination." >&2
+    exit 1
+  fi
+  stage=""
+  rm -rf -- "$backup"
+  backup=""
+else
+  mv "$stage" "$target"
+  stage=""
+fi
+
+echo "Fertig: $target"
 '''
