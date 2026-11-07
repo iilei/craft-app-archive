@@ -18,6 +18,7 @@ The archive layout is:
 craft-archive/
 ├── apps.txt              # copy of the app list this archive was built from
 ├── UPDATE.txt            # how to refresh this archive, also for someone it was handed to
+├── craft-wiki/           # offline Craft Wiki with viewers (see docs/WIKI-ARCHIVE.md)
 ├── official-apps/
 │   ├── graphics-and-design/
 │   │   └── photocraft/
@@ -60,6 +61,17 @@ This defaults to:
 - signature verification: enabled
 
 Turn off a default target with `--no-macos`, `--no-windows-x64` or `--no-linux-x86_64-deb`.
+
+## Offline wiki in the bundle
+
+As its final step, `mise run archive` runs `mise run wiki:archive` to build the offline Craft Wiki and its viewers into `craft-wiki/` inside the archive, so one folder holds the apps and their documentation. Open it with the start script in `craft-wiki/` (see `craft-wiki/README.txt`). The build needs the Node and Go versions pinned in `mise.toml`, which `mise install` provides.
+
+```bash
+mise run archive --wiki-targets linux-amd64,windows-amd64   # only these viewers
+mise run archive --no-wiki                                  # apps only
+```
+
+If the wiki build fails, the run is kept like any other failure; `--resume` skips the finished apps and retries the wiki. `mise run wiki:archive` still works on its own for a separate wiki archive (see [docs/WIKI-ARCHIVE.md](docs/WIKI-ARCHIVE.md)).
 
 ## Choose where the archive is written
 

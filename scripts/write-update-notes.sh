@@ -14,6 +14,7 @@ repo_dir="$(pwd -P)"
 # Flags in mise.toml order: <flag> <default>. Only flags that differ from the
 # default are written, using the negated --no-<flag> form for default-on ones.
 flags=(
+  wiki true
   macos true
   windows-x64 true
   windows-arm64 false
@@ -48,6 +49,9 @@ if [[ "${usage_retries:-3}" != 3 ]]; then
 fi
 if [[ "${usage_retry_delay:-5}" != 5 ]]; then
   options+=(--retry-delay "$usage_retry_delay")
+fi
+if [[ -n "${usage_wiki_targets:-}" && "${usage_wiki:-true}" == true ]]; then
+  options+=(--wiki-targets "$usage_wiki_targets")
 fi
 for ((i = 0; i < ${#flags[@]}; i += 2)); do
   flag="${flags[i]}" default="${flags[i + 1]}"
@@ -146,5 +150,6 @@ out that commit before running the update:
   git -C $(printf '%q' "$repo_dir") checkout $commit
 
 Per-app details (release, source commit, checksums, verification method) are
-in each app's provenance.toml.
+in each app's provenance.toml. If present, craft-wiki/ holds an offline copy of
+the Craft Wiki: see craft-wiki/README.txt for how to open it.
 EOF

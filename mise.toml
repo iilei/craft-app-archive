@@ -75,6 +75,8 @@ flag "--linux-riscv64-deb" default="false" help="Download Linux RISC-V 64-bit De
 flag "--linux-riscv64-rpm" default="false" help="Download Linux RISC-V 64-bit RPM"
 flag "--linux-riscv64-tar-gz" default="false" help="Download Linux RISC-V 64-bit tar.gz bundle"
 flag "--overwrite" default="false" help="Replace an existing archive directory"
+flag "--wiki" default="true" negate="--no-wiki" help="Also build the offline Craft Wiki and its viewers into craft-wiki/ (final step)"
+flag "--wiki-targets <targets>" help="Comma-separated wiki viewer targets (default: all), e.g. linux-amd64,windows-amd64"
 flag "--resume" default="false" help="Continue an unfinished run (kept after a failure) instead of starting over"
 flag "--retries <n>" default="3" help="Retries after a failed network request"
 flag "--retry-delay <seconds>" default="5" help="Seconds before the first retry; each further retry waits longer"
@@ -170,7 +172,7 @@ fi
 # or the archive would mix two configurations. Retry settings may change.
 manifest_file="${CRAFT_APPS_MANIFEST:-apps.txt}"
 [[ -f "$manifest_file" ]] || { echo "App list not found: $manifest_file" >&2; exit 1; }
-run_options="$(printf '%q ' "$verify_signatures" "${archive_args[@]}"; echo; cksum < "$manifest_file")"
+run_options="$(printf '%q ' "$verify_signatures" "wiki=$usage_wiki" "wiki_targets=${usage_wiki_targets:-}" "${archive_args[@]}"; echo; cksum < "$manifest_file")"
 options_file="$stage_dir/.run-options"
 if [[ -e "$stage_dir" ]]; then
   if [[ "$usage_resume" != true ]]; then
@@ -198,6 +200,11 @@ fi
 CRAFT_GPG_KEY_FILE="$(pwd)/keys/storytold-release-key.asc" \
 CRAFT_GPG_FINGERPRINT="2B76741B414AAD6CD33E631213A005C0B9D7C3ED" \
 bash scripts/archive-craft-apps.sh "${archive_args[@]}"
+# Final step: the offline wiki and its viewers complete the bundle. A failure
+# keeps the run for --resume, which skips the finished apps and redoes this.
+if [[ "$usage_wiki" == true ]]; then
+  mise run wiki:archive --destination "$stage/craft-wiki" ${usage_wiki_targets:+--targets "$usage_wiki_targets"}
+fi
 bash scripts/write-update-notes.sh "$stage" "$target" "$verify_signatures"
 rm -f -- "$options_file"
 

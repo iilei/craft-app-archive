@@ -39,6 +39,8 @@ mise run wiki:launcher:build -- --targets windows-amd64,darwin-arm64,linux-amd64
 
 `mise run wiki:archive` accepts the same `--targets` option. The environment variable `CRAFT_WIKI_TARGETS` accepts the same comma-separated target names; `--targets` takes precedence. Supported targets are `windows-amd64`, `windows-arm64`, `darwin-amd64`, `darwin-arm64`, `linux-amd64`, and `linux-arm64`. Each build replaces `launchers/`, so it contains exactly the targets recorded in `provenance.toml`.
 
+`mise run archive` also runs this task as its final step and puts the result in `craft-wiki/` inside the app archive, so a full bundle includes the wiki (skip it with `--no-wiki`, choose viewers with `--wiki-targets`). The sections below cover building the wiki on its own.
+
 ## Choose where the wiki archive is written
 
 By default the wiki archive is written to `craft-wiki/` in this repository. Every wiki task (`wiki:build`, `wiki:launcher:build`, `wiki:archive`, `wiki:launch`) accepts `--destination` to use another directory; pass the same one to each task you run:
