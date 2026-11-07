@@ -4,7 +4,7 @@ Cross-platform `mise` task to shallow-clone Craft Apps, archive latest release i
 
 ## What it does
 
-This repository contains a reproducible archive workflow for all apps listed in the Craft Wiki:
+This repository contains a reproducible archive workflow for the apps listed in the Craft Wiki that publish Windows portable packages (ArtCraft Studio is excluded because it ships only installers):
 
 - shallow source clones
 - latest GitHub release assets
@@ -17,8 +17,8 @@ The archive layout is:
 ```text
 craft-archive/
 ├── official-apps/
-│   ├── ai-and-generative-media/
-│   │   └── artcraft-studio/
+│   ├── graphics-and-design/
+│   │   └── photocraft/
 │   │       ├── source/
 │   │       ├── provenance.toml
 │   │       └── release assets...
@@ -89,7 +89,7 @@ mise --cd ~/code/craft-app-archive run archive \
 Windows limits a full path to 260 characters (`MAX_PATH`) by default; Linux and macOS allow far longer paths. This has nothing to do with `\` versus `/` separators. Each clone lives several levels deep, and during a run the archive is built in a temporary stage directory next to the destination, for example:
 
 ```text
-C:\Users\<you>\code\craft-app-archive\.craft-archive.stage.Ab12Cd\official-apps\ai-and-generative-media\artcraft-studio\source\
+C:\Users\<you>\code\craft-app-archive\.craft-archive.stage.Ab12Cd\official-apps\graphics-and-design\photocraft\source\
 ```
 
 Files nested inside a repository can push the total past 260 characters, and Git for Windows then fails with `Filename too long`.
@@ -165,7 +165,7 @@ mise run archive \
 mise run archive --windows-arm64 --windows-x86
 ```
 
-Windows downloads are portable `.zip` packages only. If a release has no portable package for a selected architecture (currently ArtCraft Studio, which ships only a setup `.exe` and `.msi`), that download is skipped with a warning; installers are not used as a fallback.
+Windows downloads are portable `.zip` packages only. If a release has no portable package for a selected architecture, that download is skipped with a warning; installers are not used as a fallback. Apps that publish no Windows portable package at all are not listed in `apps.tsv`.
 
 ## Key fetch / verification
 
@@ -199,19 +199,19 @@ Each release directory contains a `provenance.toml` file with machine-readable m
 
 ```toml
 schema_version = 1
-name = "ArtCraft Studio"
-slug = "artcraft-studio"
+name = "PhotoCraft"
+slug = "photocraft"
 group = "official-apps"
-category = "ai-and-generative-media"
-repository = "storytold/artcraft"
-repository_url = "https://github.com/storytold/artcraft.git"
-source_ref = "artcraft-v0.41.1"
+category = "graphics-and-design"
+repository = "storytold/photocraft"
+repository_url = "https://github.com/storytold/photocraft.git"
+source_ref = "v0.21.0"
 source_ref_type = "tag"
 commit = "..."
 clone_depth = 20
 shallow = true
 release_id = "..."
-release_url = "https://github.com/storytold/artcraft/releases/tag/..."
+release_url = "https://github.com/storytold/photocraft/releases/tag/..."
 release_published_at = "..."
 checksums_file = "SHA256SUMS.txt"
 checksums_sha256 = "..."
