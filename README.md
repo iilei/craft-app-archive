@@ -86,6 +86,28 @@ mise --cd ~/code/craft-app-archive run archive \
 
 `-C` / `--cd` tells mise to load and run the task as if started in the repository directory. It does not choose the archive output location; `--destination` does that. Use an absolute destination whenever you want to archive to a location outside the repo.
 
+## Interrupted runs, retries and GitHub rate limits
+
+Failed network requests (GitHub API calls, downloads, git clone/fetch) are retried before a run gives up: 3 retries by default, waiting 5 s, 10 s and then 15 s. Tune this with `--retries` and `--retry-delay` (the first wait, in seconds; each further retry waits one more step):
+
+```bash
+mise run archive --retries 5 --retry-delay 10
+```
+
+If a run still fails, its progress is kept in a staging directory next to the destination (`.craft-archive.stage` for the default destination), and the task tells you so. Run the same command again with `--resume` to continue: apps that were finished are skipped, and an app that was interrupted is started over.
+
+```bash
+mise run archive --resume
+```
+
+Without `--resume`, the task refuses to start while an unfinished run exists, so no progress is discarded by accident; remove the staging directory to start over. A resumed run must use the same options and app list as the run it continues (retry settings may differ). A lock directory (`.craft-archive.lock`) prevents two runs on the same destination at once.
+
+Without a token, the GitHub API allows only 60 requests per hour, and each app needs about three, so a full run plus a retry within the same hour can use them all up. When that happens, the run stops right away and prints when the limit resets; a short retry cannot help. Set `GH_TOKEN` to any GitHub token (no scopes needed) to raise the limit to 5000 requests per hour:
+
+```bash
+GH_TOKEN=$(gh auth token) mise run archive --resume
+```
+
 ## Windows: long file paths
 
 Windows limits a full path to 260 characters (`MAX_PATH`) by default; Linux and macOS allow far longer paths. This has nothing to do with `\` versus `/` separators. Each clone lives several levels deep, and during a run the archive is built in a temporary stage directory next to the destination, for example:

@@ -13,6 +13,9 @@ WANT_WINDOWS_X64=true
 WANT_WINDOWS_ARM64=false
 WANT_WINDOWS_X86=false
 OVERWRITE=false
+RESUME=false
+RETRIES=3
+RETRY_DELAY=5
 AUTH=()
 [[ -n "${GH_TOKEN:-}" ]] && AUTH=(-H "Authorization: Bearer $GH_TOKEN")
 
@@ -43,6 +46,12 @@ Options:
   --depth N                       Git shallow clone depth (default: 20)
   --destination PATH              Archive root directory (default: craft-archive)
   --overwrite                     Replace an existing archive directory
+  --resume                        Build directly in the destination, skipping apps
+                                  that already have provenance.toml and redoing
+                                  incomplete ones (continues an interrupted run)
+  --retries N                     Retries after a failed network request (default: 3)
+  --retry-delay SECONDS           Delay before the first retry; grows with each
+                                  attempt (default: 5)
   --macos true|false             macOS installer download (default: true)
   --windows-x64 true|false       Windows x64 download (default: true)
   --windows-arm64 true|false     Windows ARM64 download (default: false)
@@ -55,7 +64,8 @@ Options:
 Environment:
   CRAFT_ARCHIVE_DIR             Output root directory (default: craft-archive)
   CRAFT_APPS_MANIFEST           App manifest path (default: apps.txt)
-  GH_TOKEN                     GitHub API token (optional)
+  GH_TOKEN                     GitHub API token (optional; raises the API limit
+                               from 60 to 5000 requests per hour)
   CRAFT_GPG_KEY_FILE           Public key file for release verification
   CRAFT_GPG_FINGERPRINT        Expected GPG fingerprint for the trusted release key
   NO_VERIFY_SIGNATURE           Env opt-out: set to 1/true/yes to disable verification
@@ -85,8 +95,62 @@ timestamp() {
     date -u '+%Y-%m-%dT%H:%M:%SZ'
   fi
 }
+# Run a command, retrying up to RETRIES times with a growing delay
+# (RETRY_DELAY, 2x, 3x, ...). Usage: retry <description> <command...>
+retry() {
+  local description="$1" attempt=0 wait
+  shift
+  until "$@"; do
+    if ((attempt >= RETRIES)); then
+      echo "ERROR: $description failed after $((attempt + 1)) attempt(s)" >&2
+      return 1
+    fi
+    attempt=$((attempt + 1))
+    wait=$((RETRY_DELAY * attempt))
+    echo "WARN: $description failed; retrying in ${wait}s ($attempt/$RETRIES)" >&2
+    sleep "$wait"
+  done
+}
+
+download() { curl -fL "$1" -o "$2"; }
+
+# GitHub API GET. Prints the body on success. Returns 4 for 404 (not found),
+# so callers can tell a missing release from a failure, and 1 for other errors.
+# Retries network errors, rate limiting (403/429) and server errors (5xx),
+# except when the hourly API limit is used up, which a short retry cannot fix.
 fetch_json() {
-  curl -fsSL --retry 3 "${AUTH[@]}" -H 'Accept: application/vnd.github+json' "$1"
+  local url="$1" attempt=0 status wait headers body reset retry_after
+  headers="$(mktemp)" body="$(mktemp)"
+  while :; do
+    status="$(curl -sSL "${AUTH[@]}" -H 'Accept: application/vnd.github+json' \
+      -D "$headers" -o "$body" -w '%{http_code}' "$url" 2>/dev/null)" || true
+    case "$status" in
+      2??) cat "$body"; rm -f "$headers" "$body"; return 0 ;;
+      404) rm -f "$headers" "$body"; return 4 ;;
+      000|403|429|5??) ;;
+      *)
+        echo "ERROR: GitHub API returned HTTP $status for $url" >&2
+        rm -f "$headers" "$body"; return 1 ;;
+    esac
+    if [[ "$status" == 403 || "$status" == 429 ]] && grep -qi '^x-ratelimit-remaining: *0' "$headers"; then
+      reset="$(awk -F': *' 'tolower($1)=="x-ratelimit-reset" {gsub(/\r/, "", $2); print $2}' "$headers")"
+      echo "ERROR: GitHub API rate limit exhausted (HTTP $status for $url)." >&2
+      [[ -n "$reset" ]] && echo "       It resets at $(date -d "@$reset" 2>/dev/null || date -r "$reset" 2>/dev/null || echo "epoch $reset")." >&2
+      [[ ${#AUTH[@]} -gt 0 ]] || echo "       Set GH_TOKEN to raise the limit from 60 to 5000 requests per hour." >&2
+      rm -f "$headers" "$body"; return 1
+    fi
+    if ((attempt >= RETRIES)); then
+      echo "ERROR: GitHub API request failed after $((attempt + 1)) attempt(s) (HTTP $status): $url" >&2
+      rm -f "$headers" "$body"; return 1
+    fi
+    attempt=$((attempt + 1))
+    wait=$((RETRY_DELAY * attempt))
+    # Secondary rate limits send Retry-After; never come back sooner than that.
+    retry_after="$(awk -F': *' 'tolower($1)=="retry-after" {gsub(/\r/, "", $2); print $2}' "$headers")"
+    [[ "$retry_after" =~ ^[0-9]+$ ]] && ((retry_after > wait)) && wait="$retry_after"
+    echo "WARN: GitHub API returned HTTP $status for $url; retrying in ${wait}s ($attempt/$RETRIES)" >&2
+    sleep "$wait"
+  done
 }
 asset_url() {
   local body="$1" pattern="$2"
@@ -128,6 +192,13 @@ while (($#)); do
     --overwrite)
       OVERWRITE=true
       shift ;;
+    --resume)
+      RESUME=true
+      shift ;;
+    --retries)
+      RETRIES="${2:?--retries requires a value}"; shift 2 ;;
+    --retry-delay)
+      RETRY_DELAY="${2:?--retry-delay requires a value}"; shift 2 ;;
     --depth)
       DEPTH="${2:?--depth requires a value}"; shift 2 ;;
     --macos)
@@ -158,6 +229,8 @@ case "${NO_VERIFY_SIGNATURE:-}" in
 esac
 
 [[ "$DEPTH" =~ ^[1-9][0-9]*$ ]] || die "depth must be a positive integer: $DEPTH"
+[[ "$RETRIES" =~ ^[0-9]+$ ]] || die "retries must be a non-negative integer: $RETRIES"
+[[ "$RETRY_DELAY" =~ ^[0-9]+$ ]] || die "retry delay must be a non-negative integer (seconds): $RETRY_DELAY"
 for value in "$WANT_MACOS" "$WANT_WINDOWS_X64" "$WANT_WINDOWS_ARM64" "$WANT_WINDOWS_X86" "$VERIFY_SIGNATURES"; do
   [[ "$value" == true || "$value" == false ]] || die "boolean options must be true or false"
 done
@@ -170,7 +243,11 @@ command -v curl >/dev/null || die "curl is required"
 command -v jq >/dev/null || die "jq is required (mise install)"
 [[ -f "$MANIFEST" ]] || die "manifest not found: $MANIFEST"
 
-if [[ -e "$TARGET_ROOT" ]]; then
+if [[ "$RESUME" == true ]]; then
+  # Build in place so a later run can pick up where this one stopped.
+  mkdir -p "$TARGET_ROOT"
+  ROOT="$TARGET_ROOT"
+elif [[ -e "$TARGET_ROOT" ]]; then
   if [[ "$OVERWRITE" == true ]]; then
     mkdir -p "$(dirname "$TARGET_ROOT")"
     TEMP_ROOT="$(mktemp -d "$(dirname "$TARGET_ROOT")/.$(basename "$TARGET_ROOT").tmp.XXXXXX")"
@@ -223,18 +300,37 @@ verify_signature() {
 while IFS=$'\x1f' read -r group category slug display repo; do
   [[ -z "${repo:-}" || "$group" == \#* ]] && continue
   [[ "$category" == - ]] && category=""
+  for name_part in "$group" "$slug" ${category:+"$category"}; do
+    [[ "$name_part" =~ ^[A-Za-z0-9._-]+$ && "$name_part" != . && "$name_part" != .. ]] \
+      || die "invalid group/category/slug in $MANIFEST: $name_part"
+  done
   dest="$ROOT/$group"
   [[ -n "$category" ]] && dest="$dest/$category"
   dest="$dest/$slug"
   repo_dir="$dest/source"
+  if [[ "$RESUME" == true && -f "$dest/provenance.toml" ]]; then
+    echo "==> $display ($repo): already archived, skipping"
+    continue
+  fi
+  if [[ "$RESUME" == true && -e "$dest" ]]; then
+    echo "==> $display ($repo): incomplete from an earlier run, starting it over"
+    rm -rf -- "$dest"
+  fi
   mkdir -p "$dest"
   echo "==> $display ($repo)"
 
   repo_json="$(fetch_json "$API/repos/$repo")" || die "repository not reachable: $repo"
+  # A 404 means the repo has no release; any other failure must stop the run,
+  # or the archive would silently fall back to a tag or branch.
   release=""
-  if release="$(fetch_json "$API/repos/$repo/releases/latest" 2>/dev/null)"; then
-    [[ "$(jq -r '.tag_name // empty' <<<"$release")" ]] || release=""
+  rc=0
+  release="$(fetch_json "$API/repos/$repo/releases/latest")" || rc=$?
+  if ((rc == 4)); then
+    release=""
+  elif ((rc != 0)); then
+    die "could not fetch the latest release: $repo"
   fi
+  [[ -z "$release" || -n "$(jq -r '.tag_name // empty' <<<"$release")" ]] || release=""
 
   if [[ -n "$release" ]]; then
     source_ref="$(jq -r '.tag_name' <<<"$release")"
@@ -243,7 +339,9 @@ while IFS=$'\x1f' read -r group category slug display repo; do
     release_published="$(jq -r '.published_at // empty' <<<"$release")"
     release_id="$(jq -r '.id // empty' <<<"$release")"
   else
-    tags="$(fetch_json "$API/repos/$repo/tags?per_page=1" 2>/dev/null || true)"
+    rc=0
+    tags="$(fetch_json "$API/repos/$repo/tags?per_page=1")" || rc=$?
+    ((rc == 0 || rc == 4)) || die "could not fetch tags: $repo"
     source_ref="$(jq -r '.[0].name // empty' <<<"${tags:-[]}")"
     if [[ -n "$source_ref" ]]; then
       ref_type=tag
@@ -258,14 +356,19 @@ while IFS=$'\x1f' read -r group category slug display repo; do
   if [[ -d "$repo_dir/.git" ]]; then
     [[ -z "$(git -c core.longpaths=true -C "$repo_dir" status --porcelain)" ]] || die "local changes in clone prevent update: $repo_dir"
     if [[ "$ref_type" == tag ]]; then
-      git -c core.longpaths=true -C "$repo_dir" fetch --depth="$DEPTH" --force origin "refs/tags/$source_ref:refs/tags/$source_ref"
+      retry "git fetch $repo" git -c core.longpaths=true -C "$repo_dir" fetch --depth="$DEPTH" --force origin "refs/tags/$source_ref:refs/tags/$source_ref"
       git -c core.longpaths=true -C "$repo_dir" checkout --detach "$source_ref"
     else
-      git -c core.longpaths=true -C "$repo_dir" fetch --depth="$DEPTH" origin "$source_ref"
+      retry "git fetch $repo" git -c core.longpaths=true -C "$repo_dir" fetch --depth="$DEPTH" origin "$source_ref"
       git -c core.longpaths=true -C "$repo_dir" checkout --detach FETCH_HEAD
     fi
   else
-    git clone -c core.longpaths=true --depth "$DEPTH" --single-branch --branch "$source_ref" "$clone_url" "$repo_dir"
+    # A failed clone can leave a partial directory behind; start each attempt clean.
+    clone_fresh() {
+      rm -rf -- "$repo_dir"
+      git clone -c core.longpaths=true --depth "$DEPTH" --single-branch --branch "$source_ref" "$clone_url" "$repo_dir"
+    }
+    retry "git clone $repo" clone_fresh
   fi
   commit="$(git -C "$repo_dir" rev-parse HEAD)"
 
@@ -275,11 +378,10 @@ while IFS=$'\x1f' read -r group category slug display repo; do
   checksums_sha256=""
 
   if [[ -n "$release" ]]; then
-    checksums_body="$(fetch_json "${API}/repos/$repo/releases/latest" 2>/dev/null || true)"
-    checksums_url="$(asset_url "$checksums_body" '^SHA256SUMS\.txt$')"
-    checksums_name="$(asset_name "$checksums_body" '^SHA256SUMS\.txt$')"
+    checksums_url="$(asset_url "$release" '^SHA256SUMS\.txt$')"
+    checksums_name="$(asset_name "$release" '^SHA256SUMS\.txt$')"
     if [[ -n "$checksums_url" ]]; then
-      curl -fL --retry 3 "$checksums_url" -o "$dest/$checksums_name"
+      retry "download $checksums_name ($repo)" download "$checksums_url" "$dest/$checksums_name"
       checksums_sha256="$(sha256 "$dest/$checksums_name")"
     fi
 
@@ -293,7 +395,7 @@ while IFS=$'\x1f' read -r group category slug display repo; do
         return 0
       fi
       file="$dest/$name"
-      curl -fL --retry 3 "$url" -o "$file"
+      retry "download $name" download "$url" "$file"
       hash="$(sha256 "$file")"
       if [[ -n "$checksums_name" ]]; then
         expected="$(awk -v n="$name" '$2==n || $2=="*"n {print $1; exit}' "$dest/$checksums_name")"
@@ -312,7 +414,7 @@ while IFS=$'\x1f' read -r group category slug display repo; do
       sig_url="$(asset_url "$release" "^${name//./\\.}\\.asc$")"
       sig_name="$(asset_name "$release" "^${name//./\\.}\\.asc$")"
       if [[ -n "$sig_url" ]]; then
-        curl -fL --retry 3 "$sig_url" -o "$dest/$sig_name"
+        retry "download $sig_name" download "$sig_url" "$dest/$sig_name"
       fi
       if [[ "$VERIFY_SIGNATURES" == true && -n "$sig_url" ]]; then
         verify_signature "$dest/$sig_name" "$file"
@@ -351,7 +453,7 @@ while IFS=$'\x1f' read -r group category slug display repo; do
       checksums_sig_url="$(asset_url "$release" '^SHA256SUMS\.txt\.asc$')"
       checksums_sig_name="$(asset_name "$release" '^SHA256SUMS\.txt\.asc$')"
       if [[ -n "$checksums_sig_url" && -n "$checksums_name" ]]; then
-        curl -fL --retry 3 "$checksums_sig_url" -o "$dest/$checksums_sig_name"
+        retry "download $checksums_sig_name ($repo)" download "$checksums_sig_url" "$dest/$checksums_sig_name"
         verify_signature "$dest/$checksums_sig_name" "$dest/$checksums_name"
       else
         echo "WARN: no signed SHA256SUMS.txt for $repo; GPG provenance not confirmed" >&2
@@ -390,9 +492,11 @@ while IFS=$'\x1f' read -r group category slug display repo; do
       printf 'signature_url = %s\n' "$(q "$sig_url")"
       printf 'verification = %s\n\n' "$(q "$verification")"
     done < "$assets_file"
-  } > "$dest/provenance.toml"
+  } > "$dest/provenance.toml.tmp"
 
   rm -f "$assets_file"
+  # provenance.toml marks the app as finished for --resume, so it appears last.
+  mv -- "$dest/provenance.toml.tmp" "$dest/provenance.toml"
 done < <(sed -E $'s/^[[:space:]]+|[[:space:]]+$//g; s/\t| {2,}/\x1f/g' "$MANIFEST")
 
 # Keep the app list next to the per-app provenance, so the archive records which

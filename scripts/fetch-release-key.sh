@@ -25,7 +25,9 @@ tmp_download="${tmp_home}/release-signing-key.asc"
 trap 'rm -rf "$tmp_home"; rm -f "$tmp_key"' EXIT
 chmod 700 "$tmp_home"
 
-if ! curl --fail --location --silent --show-error --retry 3 \
+# CRAFT_RETRIES / CRAFT_RETRY_DELAY match the archive task's --retries / --retry-delay.
+if ! curl --fail --location --silent --show-error \
+  --retry "${CRAFT_RETRIES:-3}" --retry-delay "${CRAFT_RETRY_DELAY:-5}" \
   --proto '=https' --tlsv1.2 \
   "$KEY_URL" -o "$tmp_download"; then
   fail "could not download release signing key from $KEY_URL"

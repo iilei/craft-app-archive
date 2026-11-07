@@ -67,6 +67,9 @@ flag "--linux-riscv64-deb" default="false" help="Download Linux RISC-V 64-bit De
 flag "--linux-riscv64-rpm" default="false" help="Download Linux RISC-V 64-bit RPM"
 flag "--linux-riscv64-tar-gz" default="false" help="Download Linux RISC-V 64-bit tar.gz bundle"
 flag "--overwrite" default="false" help="Replace an existing archive directory"
+flag "--resume" default="false" help="Continue an unfinished run (kept after a failure) instead of starting over"
+flag "--retries <n>" default="3" help="Retries after a failed network request"
+flag "--retry-delay <seconds>" default="5" help="Seconds before the first retry; each further retry waits longer"
 flag "--verify-signatures" default="true" negate="--no-verify-signatures" help="Verify available release signatures (disable with --no-verify-signatures or NO_VERIFY_SIGNATURE=1)"
 '''
 shell = "bash -c"
@@ -90,29 +93,46 @@ if [[ -e "$target" || -L "$target" ]]; then
   fi
 fi
 
+for value in "$usage_retries" "$usage_retry_delay"; do
+  [[ "$value" =~ ^[0-9]+$ ]] || {
+    echo "--retries and --retry-delay must be non-negative integers" >&2
+    exit 1
+  }
+done
+export CRAFT_RETRIES="$usage_retries" CRAFT_RETRY_DELAY="$usage_retry_delay"
+
 verify_signatures="$usage_verify_signatures"
 case "${NO_VERIFY_SIGNATURE:-}" in
   1|true|yes|on|TRUE|YES|ON) verify_signatures=false ;;
 esac
-if [[ "$verify_signatures" == true ]]; then
-  bash scripts/fetch-release-key.sh
-fi
 
-stage="$(mktemp -d "$target_parent/.$target_name.stage.XXXXXX")"
+# One run per destination at a time: the staging directory has a fixed name.
+lock="$target_parent/.$target_name.lock"
+if ! mkdir "$lock" 2>/dev/null; then
+  echo "Another archive run is using $target (lock: $lock)." >&2
+  echo "If no run is active, remove that lock directory and try again." >&2
+  exit 1
+fi
+stage=""
 backup=""
 cleanup() {
   status=$?
   if [[ -n "$backup" && -e "$backup" && ! -e "$target" && ! -L "$target" ]]; then
     mv "$backup" "$target" || echo "WARNING: could not restore previous archive from $backup" >&2
   fi
-  if [[ -n "$stage" && -e "$stage" ]]; then
-    rm -rf -- "$stage"
+  # Keep an unfinished run so --resume can continue it.
+  if [[ "$status" -ne 0 && -n "$stage" && -d "$stage" ]]; then
+    echo "" >&2
+    echo "The unfinished run is kept in: $stage" >&2
+    echo "Run the same command again with --resume to continue where it stopped." >&2
   fi
+  rmdir "$lock" 2>/dev/null || true
   return "$status"
 }
 trap cleanup EXIT
 
-archive_args=(--depth "$usage_depth" --destination "$stage" --overwrite)
+stage_dir="$target_parent/.$target_name.stage"
+archive_args=(--depth "$usage_depth" --destination "$stage_dir" --resume)
 if [[ "$usage_macos" != true ]]; then
   archive_args+=(--macos false)
 fi
@@ -138,10 +158,40 @@ if [[ "$usage_verify_signatures" != true ]]; then
   archive_args+=(--verify-signatures false)
 fi
 
+# A resumed run must use the same options and app list as the run it continues,
+# or the archive would mix two configurations. Retry settings may change.
+manifest_file="${CRAFT_APPS_MANIFEST:-apps.txt}"
+[[ -f "$manifest_file" ]] || { echo "App list not found: $manifest_file" >&2; exit 1; }
+run_options="$(printf '%q ' "$verify_signatures" "${archive_args[@]}"; echo; cksum < "$manifest_file")"
+options_file="$stage_dir/.run-options"
+if [[ -e "$stage_dir" ]]; then
+  if [[ "$usage_resume" != true ]]; then
+    echo "An unfinished run exists in $stage_dir." >&2
+    echo "Pass --resume to continue it, or remove that directory to start over." >&2
+    exit 1
+  fi
+  if [[ "$(cat "$options_file" 2>/dev/null)" != "$run_options" ]]; then
+    echo "The unfinished run in $stage_dir used different options or a different app list." >&2
+    echo "Resume it with the same options, or remove that directory to start over." >&2
+    exit 1
+  fi
+  echo "Resuming the unfinished run in $stage_dir"
+else
+  mkdir "$stage_dir"
+  printf '%s\n' "$run_options" > "$options_file"
+fi
+stage="$stage_dir"
+archive_args+=(--retries "$usage_retries" --retry-delay "$usage_retry_delay")
+
+if [[ "$verify_signatures" == true ]]; then
+  bash scripts/fetch-release-key.sh
+fi
+
 CRAFT_GPG_KEY_FILE="$(pwd)/keys/storytold-release-key.asc" \
 CRAFT_GPG_FINGERPRINT="2B76741B414AAD6CD33E631213A005C0B9D7C3ED" \
 bash scripts/archive-craft-apps.sh "${archive_args[@]}"
 bash scripts/write-update-notes.sh "$stage" "$target" "$verify_signatures"
+rm -f -- "$options_file"
 
 if [[ -e "$target" || -L "$target" ]]; then
   backup="$(mktemp -d "$target_parent/.$target_name.backup.XXXXXX")"

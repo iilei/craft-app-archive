@@ -43,6 +43,12 @@ options=()
 if [[ "${usage_depth:-20}" != 20 ]]; then
   options+=(--depth "$usage_depth")
 fi
+if [[ "${usage_retries:-3}" != 3 ]]; then
+  options+=(--retries "$usage_retries")
+fi
+if [[ "${usage_retry_delay:-5}" != 5 ]]; then
+  options+=(--retry-delay "$usage_retry_delay")
+fi
 for ((i = 0; i < ${#flags[@]}; i += 2)); do
   flag="${flags[i]}" default="${flags[i + 1]}"
   var="usage_${flag//-/_}"
@@ -94,6 +100,11 @@ The command rebuilds the archive in a temporary directory and replaces this
 one only after the run succeeds. If the repository or this archive has moved,
 adjust the -C path or --destination; from inside the repository, -C can be
 left out.
+
+If a run stops partway (network trouble, GitHub rate limits), its progress is
+kept: run the same command again with --resume added to continue it. Setting
+GH_TOKEN to a GitHub token raises the API limit from 60 to 5000 requests per
+hour.
 
 Update a copy you were given
 ----------------------------
